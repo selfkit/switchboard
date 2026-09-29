@@ -133,7 +133,7 @@ npm install -g pnpm
 拉代码，并切到 Mac 上**这次发版的同一个提交**（版本一致靠的就是这个）：
 
 ```powershell
-git clone git@github.com:en-o/switchboard.git
+git clone git@github.com:selfkit/switchboard.git
 ```
 
 ```powershell
