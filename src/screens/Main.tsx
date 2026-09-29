@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api";
 import type { Account, SessionInfo } from "../api";
 import { C, MOD } from "../ui";
@@ -44,7 +44,7 @@ export default function Main(p: Props) {
   }, [p.accounts, filter, q]);
 
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", background: C.white }}>
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", background: C.surface }}>
       <Sidebar footer={<SideNav current="main" sessionCount={p.sessions.length} onGo={p.onGo} onLock={p.onLock} />}>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <NavItem
@@ -123,7 +123,7 @@ export default function Main(p: Props) {
               aria-pressed={blurred}
               onClick={() => setBlurred((value) => !value)}
               title={blurred ? "退出截图模糊模式" : "模糊账号列表，用于截图"}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 7, border: `1px solid ${blurred ? C.brand : C.border}`, background: blurred ? C.brandSoft : C.white, color: blurred ? C.brand : C.sub, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 7, border: `1px solid ${blurred ? C.brand : C.border}`, background: blurred ? C.brandSoft : C.surface, color: blurred ? C.brand : C.sub, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M2 12s3.7-6 10-6 10 6 10 6-3.7 6-10 6S2 12 2 12Z" />
@@ -134,7 +134,7 @@ export default function Main(p: Props) {
             </button>
             <button
               onClick={p.onAdd}
-              style={{ padding: "9px 16px", borderRadius: 7, border: "none", background: C.brand, color: C.white, fontSize: 13, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}
+              style={{ padding: "9px 16px", borderRadius: 7, border: "none", background: C.brand, color: C.onBrand, fontSize: 13, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}
             >
               + 新增账号
             </button>
@@ -168,6 +168,17 @@ export default function Main(p: Props) {
 
 function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; blurred: boolean; p: Props }) {
   const [copyStatus, setCopyStatus] = useState<"idle" | "done" | "error">("idle");
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // 点菜单外面就收起
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenu(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menu]);
   useEffect(() => {
     if (copyStatus === "idle") return;
     const timer = window.setTimeout(() => setCopyStatus("idle"), 2500);
@@ -210,7 +221,7 @@ function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; b
     justifyContent: "center",
     borderRadius: 6,
     border: `1px solid ${C.border}`,
-    background: C.white,
+    background: C.surface,
     color: C.sub,
     cursor: "pointer",
   };
@@ -218,7 +229,7 @@ function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; b
     padding: "7px 12px",
     borderRadius: 6,
     border: `1px solid ${C.border}`,
-    background: C.white,
+    background: C.surface,
     color,
     fontSize: 12,
   });
@@ -232,7 +243,7 @@ function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; b
         display: "flex",
         flexDirection: "column",
         gap: 10,
-        background: C.white,
+        background: C.surface,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -240,27 +251,56 @@ function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; b
         <span style={{ display: "inline-block", fontSize: 11, color: C.muted, ...maskedText }}>{a.owner_type}</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           {online && (
-            <span style={{ fontSize: 11, color: "#00A870", display: "flex", alignItems: "center", gap: 4, marginRight: 2 }}>
-              <span style={{ width: 6, height: 6, borderRadius: 999, background: "#00A870" }} />
+            <span style={{ fontSize: 11, color: C.success, display: "flex", alignItems: "center", gap: 4, marginRight: 2 }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: C.success }} />
               在线
             </span>
           )}
-          <button type="button" onClick={() => p.onDuplicate(a)} title="复制新建账号" aria-label="复制新建账号" style={iconButton}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M8 4h9a2 2 0 0 1 2 2v10" />
-              <rect x="4" y="8" width="11" height="12" rx="2" />
-              <path d="M9.5 11.5v5M7 14h5" />
-            </svg>
-          </button>
-          <button type="button" onClick={() => void copyAccount()} title="复制账号信息到剪贴板（含密码、TOTP 密钥和附加字段）" aria-label="复制账号信息到剪贴板" style={{ ...iconButton, color: copyStatus === "done" ? "#00A870" : copyStatus === "error" ? C.danger : C.sub }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="5" y="5" width="14" height="16" rx="2" />
-              <path d="M9 5.5V3h6v2.5M9 10h6M9 14h6" />
-            </svg>
-          </button>
+          {/* 不常用的、会删东西的收进菜单：每张卡摆一个红框「删除」太显眼，也容易误点 */}
+          <div ref={menuRef} style={{ position: "relative" }} onKeyDown={(e) => e.key === "Escape" && setMenu(false)}>
+            <button
+              type="button"
+              onClick={() => setMenu(!menu)}
+              title="更多操作"
+              aria-label="更多操作"
+              aria-haspopup="menu"
+              aria-expanded={menu}
+              style={{ ...iconButton, fontSize: 16, lineHeight: 1, color: copyStatus === "done" ? C.success : copyStatus === "error" ? C.danger : C.sub }}
+            >
+              ⋯
+            </button>
+            {menu && (
+              <div
+                role="menu"
+                style={{ position: "absolute", right: 0, top: 32, zIndex: 10, minWidth: 140, padding: 4, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,0.12)" }}
+              >
+                {([
+                  ["复制全部信息", () => void copyAccount(), C.text, "复制到剪贴板：含密码、TOTP 密钥和附加字段，要先验主密码"],
+                  ["复制新建", () => p.onDuplicate(a), C.text, "以这个账号为模板新建一条"],
+                  ["删除", () => p.onDelete(a), C.danger, "删除前还会再确认一次"],
+                ] as const).map(([label, act, color, tip]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="menuitem"
+                    title={tip}
+                    onClick={() => {
+                      setMenu(false);
+                      act();
+                    }}
+                    style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", border: 0, borderRadius: 6, background: "transparent", fontSize: 12, color }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = C.bg)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-      {copyStatus !== "idle" && <div role="status" style={{ fontSize: 11, color: copyStatus === "done" ? "#00A870" : C.danger }}>{copyStatus === "done" ? "已复制到剪贴板" : "复制失败，请检查剪贴板权限"}</div>}
+      {copyStatus !== "idle" && <div role="status" style={{ fontSize: 11, color: copyStatus === "done" ? C.success : C.danger }}>{copyStatus === "done" ? "已复制到剪贴板" : "复制失败，请检查剪贴板权限"}</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <div style={{ fontSize: 14, color: C.text, fontWeight: 500, ...maskedText }}>{a.related_app || "（未填写应用）"}</div>
         <div style={{ fontSize: 12, color: C.sub, ...maskedText }}>
@@ -286,7 +326,7 @@ function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; b
               padding: "4px 9px",
               borderRadius: 6,
               border: `1px solid ${C.border}`,
-              background: C.white,
+              background: C.surface,
               color: value.trim() ? C.sub : C.muted,
               fontSize: 11,
               opacity: value.trim() ? 1 : 0.5,
@@ -298,7 +338,7 @@ function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; b
         ))}
       </div>
       <div style={{ fontSize: 12, color: C.muted, minHeight: 16, ...maskedText }}>{a.remark}</div>
-      <div style={{ display: "flex", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
         <button
           onClick={() => (a.login_url.trim() ? p.onLaunch(a) : p.onEdit(a))}
           title={blurred ? "打开账号页面" : a.login_url.trim() || "还没填登录直达 URL，点这里去补"}
@@ -307,7 +347,7 @@ function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; b
             borderRadius: 6,
             border: "none",
             background: a.login_url.trim() ? C.brand : C.borderStrong,
-            color: C.white,
+            color: C.onBrand,
             fontSize: 12,
             fontWeight: 500,
           }}
@@ -319,16 +359,9 @@ function AccountCard({ a, online, blurred, p }: { a: Account; online: boolean; b
             验证码
           </button>
         )}
-        {online && (
-          <button onClick={() => p.onGo("sessions")} style={small(C.sub)} title="到会话页手动填充 / 指认输入框">
-            手动填充
-          </button>
-        )}
+        {/* 「手动填充」不单列了：「切过去」就是去会话页，填充按钮在那边 */}
         <button onClick={() => p.onEdit(a)} style={small(C.sub)}>
           编辑
-        </button>
-        <button onClick={() => p.onDelete(a)} style={small(C.danger)}>
-          删除
         </button>
       </div>
     </div>
@@ -362,7 +395,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
             每条记录会自动获得独立的隔离登录环境
           </div>
         </div>
-        <button onClick={onAdd} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: C.brand, color: C.white, fontSize: 14, fontWeight: 500 }}>
+        <button onClick={onAdd} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: C.brand, color: C.onBrand, fontSize: 14, fontWeight: 500 }}>
           + 添加第一个账号
         </button>
       </div>
@@ -378,7 +411,7 @@ function SearchEmpty({ keyword, masked, onAdd }: { keyword: string; masked: bool
           <div style={{ fontSize: 14, color: C.text }}>{masked ? "没有匹配的账号" : `没有匹配“${keyword}”的账号`}</div>
           <div style={{ fontSize: 12, color: C.muted }}>检查一下平台/应用名有没有拼错，或者这本来就是个新账号</div>
         </div>
-        <button onClick={onAdd} style={{ padding: "8px 16px", borderRadius: 7, border: `1px solid ${C.borderStrong}`, background: C.white, color: C.text, fontSize: 13 }}>
+        <button onClick={onAdd} style={{ padding: "8px 16px", borderRadius: 7, border: `1px solid ${C.borderStrong}`, background: C.surface, color: C.text, fontSize: 13 }}>
           {masked ? "直接新增账号" : `直接新增“${keyword}”账号`}
         </button>
       </div>

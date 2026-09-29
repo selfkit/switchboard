@@ -36,7 +36,7 @@ const bigInput: React.CSSProperties = {
   padding: "12px 14px",
   borderRadius: 8,
   border: `1px solid ${C.borderStrong}`,
-  background: C.white,
+  background: C.surface,
   fontSize: 15,
   color: C.text,
 };
@@ -48,7 +48,7 @@ const bigButton: React.CSSProperties = {
   borderRadius: 8,
   border: "none",
   background: C.brand,
-  color: C.white,
+  color: C.onBrand,
   fontSize: 15,
   fontWeight: 500,
 };
@@ -208,7 +208,7 @@ export function Unlock({ onDone, onDemo, onTour, reason }: { onDone: () => void;
             alignItems: "center",
             gap: 10,
             padding: "10px 14px",
-            background: C.white,
+            background: C.surface,
             border: `1px solid ${C.border}`,
             borderRadius: 8,
           }}
@@ -293,7 +293,7 @@ function ResetPanel({ hint }: { hint: { data_dir: string; command: string } }) {
   // Windows 上给的是 PowerShell 命令（见 lib.rs 的 reset_hint），cmd 里跑不了
   const shell = IS_MAC ? "终端" : " PowerShell ";
   return (
-    <div style={{ width: "100%", background: C.white, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ fontSize: 13, color: C.text }}>换个账号 / 忘了主密码</div>
       <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
         主密码找不回来，也没有办法重置——它本身就是解密账号库的钥匙。

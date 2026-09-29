@@ -60,14 +60,14 @@ export function AppShell({ children, demo, tour, onStopTour, region, checking, n
         )}
         {/* 自动演示时字幕替掉它：视频里不需要这行给演示者看的提醒 */}
         {demo && !tour?.running && (
-          <span title="锁定账号库即退出演示，回到真实账号库" style={{ padding: "2px 10px", borderRadius: 999, background: "rgba(255,125,0,0.12)", color: "#D25F00", fontSize: 11 }}>
+          <span title="锁定账号库即退出演示，回到真实账号库" style={{ padding: "2px 10px", borderRadius: 999, background: "rgba(255,125,0,0.12)", color: C.warn, fontSize: 11 }}>
             演示模式 · 全是假数据 · 主密码 {DEMO_PASSWORD} · 锁定即退出
           </span>
         )}
         <RegionBadge state={region} busy={checking} onClick={onCheck} />
         <Brand size={15} />
         {notice && (
-          <div data-tauri-drag-region="false" style={{ position: "absolute", top: 42, right: 20, zIndex: 35, maxWidth: 330, padding: "12px 14px", borderRadius: 8, background: C.white, border: `1px solid ${C.border}`, boxShadow: "0 4px 18px rgba(0,0,0,0.12)", fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
+          <div data-tauri-drag-region="false" style={{ position: "absolute", top: 42, right: 20, zIndex: 35, maxWidth: 330, padding: "12px 14px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 4px 18px rgba(0,0,0,0.12)", fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
             {notice}
             <span onClick={onDismiss} style={{ marginLeft: 10, color: C.brand, cursor: "pointer" }}>关闭</span>
           </div>
@@ -108,7 +108,7 @@ export function NavItem({
       style={{
         padding: compact ? "6px 10px" : "9px 10px",
         borderRadius: 7,
-        background: active ? C.white : "transparent",
+        background: active ? C.surface : "transparent",
         // 选中态用描边+阴影代替"忽然变白"，切换时不刺眼
         boxShadow: active ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
         fontSize: muted ? 12 : 13,
@@ -311,7 +311,7 @@ export function SubPage({
   children: ReactNode;
 }) {
   return (
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", background: C.white }}>
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", background: C.surface }}>
       <Sidebar footer={<SideNav current={current} sessionCount={sessionCount} onGo={onGo} onLock={onLock} />}>{side}</Sidebar>
       <div style={{ flexGrow: 1, overflowY: "auto", padding: "24px 48px 40px", position: "relative" }}>
         {/* 这个问号讲的是"新平台怎么适配"，只跟平台适配配置页有关，设置页不该出现 */}

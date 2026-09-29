@@ -28,6 +28,7 @@
     }
   },
   "bundle": {
+    "copyright": "Copyright © 2026 tan · MIT License",
     "active": true,
     "targets": "all",
     "icon": [

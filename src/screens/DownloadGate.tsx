@@ -12,7 +12,7 @@ export const RELEASE_PAGE = "https://gitee.com/etn/switchboard_store/releases";
 export default function DownloadGate() {
   const box: React.CSSProperties = {
     width: 460,
-    background: C.white,
+    background: C.surface,
     border: `1px solid ${C.border}`,
     borderRadius: 14,
     padding: 32,
@@ -40,7 +40,7 @@ export default function DownloadGate() {
             padding: "12px 28px",
             borderRadius: 8,
             background: C.brand,
-            color: C.white,
+            color: C.onBrand,
             fontSize: 15,
             fontWeight: 500,
             textDecoration: "none",

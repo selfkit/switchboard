@@ -4,7 +4,25 @@
     <meta charset="utf-8" />
     <title>Switchboard</title>
     <style>
-      body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-serif; background: #F2F3F5; color: #1D2129; }
+      /* 调色板（src/ui.tsx 的 C 引用这些变量）。深色跟着系统外观走 */
+      :root {
+        color-scheme: light dark;
+        --sb-ink: #323668; --sb-brand: #0052D9; --sb-brand-soft: rgba(0,82,217,0.08);
+        --sb-text: #1D2129; --sb-sub: #4E5969; --sb-muted: #646E7D;
+        --sb-border: #E5E6EB; --sb-border-strong: #D4D6DB; --sb-bg: #F2F3F5; --sb-surface: #FFFFFF;
+        --sb-danger: #E34D59; --sb-success: #00875A; --sb-warn: #A15C00;
+        --sb-scroll: rgba(0,0,0,0.16); --sb-scroll-hover: rgba(0,0,0,0.3);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --sb-ink: #C5C8F5; --sb-brand: #4A86FF; --sb-brand-soft: rgba(74,134,255,0.16);
+          --sb-text: #E8E9EB; --sb-sub: #B8BCC4; --sb-muted: #8A919C;
+          --sb-border: #333335; --sb-border-strong: #4A4A4D; --sb-bg: #17171A; --sb-surface: #232324;
+          --sb-danger: #F76965; --sb-success: #27C346; --sb-warn: #FF9A2E;
+          --sb-scroll: rgba(255,255,255,0.18); --sb-scroll-hover: rgba(255,255,255,0.32);
+        }
+      }
+      body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-serif; background: var(--sb-bg); color: var(--sb-text); }
       a { text-decoration: none; }
       button { cursor: pointer; font: inherit; }
       input, select, textarea { font: inherit; }
@@ -13,11 +31,11 @@
         不滚就看不见的样式：styled 之后 WebKit 按经典滚动条排版，会自己让出 8px，
         不会再盖住右边的按钮和文字。
       */
-      * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.16) transparent; }
+      * { scrollbar-width: thin; scrollbar-color: var(--sb-scroll) transparent; }
       ::-webkit-scrollbar { width: 8px; height: 8px; }
       ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.16); border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+      ::-webkit-scrollbar-thumb { background: var(--sb-scroll); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--sb-scroll-hover); }
     </style>
   </head>
   <body>

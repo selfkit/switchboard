@@ -5,7 +5,7 @@ import { Button, C, Card, ErrorLine, inputStyle } from "../ui";
 
 /** 出口状态的配色：大陆=绿、境外=红、未知=灰 */
 function tone(v: Verdict) {
-  if (v.origin.kind === "mainland") return { color: "#00A870", flag: "🇨🇳" };
+  if (v.origin.kind === "mainland") return { color: C.success, flag: "🇨🇳" };
   if (v.origin.kind === "outside") return { color: C.danger, flag: "🌍" };
   return { color: C.muted, flag: "？" };
 }
@@ -30,8 +30,8 @@ export function RegionBadge({ state, onClick, busy }: { state: api.RegionState |
         fontSize: 11,
         border: `1px solid ${C.border}`,
         cursor: busy ? "default" : "pointer",
-        color: mainlandWithTunnel ? "#B36B00" : t?.color ?? C.sub,
-        background: v?.origin.kind === "outside" ? "rgba(227,77,89,0.08)" : mainlandWithTunnel ? "rgba(179,107,0,0.08)" : C.white,
+        color: mainlandWithTunnel ? C.warn : t?.color ?? C.sub,
+        background: v?.origin.kind === "outside" ? "rgba(227,77,89,0.08)" : mainlandWithTunnel ? "rgba(179,107,0,0.08)" : C.surface,
       }}
     >
       <span>{state?.mode === "off" && v?.origin.kind === "unknown" ? "🌐" : t?.flag ?? "🌐"}</span>
@@ -73,13 +73,13 @@ export function RegionBlocked({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 460, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
+        style={{ width: 460, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
       >
         <div style={{ fontSize: 18, color: C.text }}>{heading}{strict && "，已拦截"}</div>
 
         <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: C.sub }}>
           <div>
-            探测出口：<b style={{ color: splitTunnel ? "#B36B00" : C.danger }}>{api.regionLabel(verdict)}</b>
+            探测出口：<b style={{ color: splitTunnel ? C.warn : C.danger }}>{api.regionLabel(verdict)}</b>
             {verdict.ip && <span style={{ color: C.muted }}>（{verdict.ip}）</span>}
           </div>
           <div>要打开：{accountLabel}</div>
@@ -165,13 +165,13 @@ export function RegionAlarm({
   const heading = splitTunnel ? "检测到分流代理 / VPN" : "网络变成境外";
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 }}>
-      <div style={{ width: 470, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ width: 470, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ fontSize: 18, color: C.text }}>
           {heading}{cut && "，已断开所有页面"}
         </div>
 
         <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", fontSize: 12, color: C.sub, lineHeight: 1.8 }}>
-          探测出口：<b style={{ color: splitTunnel ? "#B36B00" : C.danger }}>{api.regionLabel(verdict)}</b>
+          探测出口：<b style={{ color: splitTunnel ? C.warn : C.danger }}>{api.regionLabel(verdict)}</b>
           {verdict.ip && <span style={{ color: C.muted }}>（{verdict.ip}）</span>}
           <br />
           {cut
@@ -287,7 +287,7 @@ export function RegionSettings({ onChanged }: { onChanged?: (s: api.RegionState)
   const option = (mode: RegionMode, title: string) => (
     <label
       key={mode}
-      style={{ display: "flex", gap: 7, alignItems: "center", justifyContent: "center", cursor: "pointer", padding: "8px 10px", border: `1px solid ${state?.mode === mode ? C.brand : C.border}`, borderRadius: 7, background: state?.mode === mode ? C.brandSoft : C.white, color: state?.mode === mode ? C.brand : C.sub, fontSize: 12, fontWeight: state?.mode === mode ? 600 : 400, flex: "1 1 140px", whiteSpace: "nowrap" }}
+      style={{ display: "flex", gap: 7, alignItems: "center", justifyContent: "center", cursor: "pointer", padding: "8px 10px", border: `1px solid ${state?.mode === mode ? C.brand : C.border}`, borderRadius: 7, background: state?.mode === mode ? C.brandSoft : C.surface, color: state?.mode === mode ? C.brand : C.sub, fontSize: 12, fontWeight: state?.mode === mode ? 600 : 400, flex: "1 1 140px", whiteSpace: "nowrap" }}
     >
       <input
         type="radio"
@@ -344,7 +344,7 @@ export function RegionSettings({ onChanged }: { onChanged?: (s: api.RegionState)
                   padding: "6px 10px",
                   borderRadius: 6,
                   border: `1px solid ${selected ? C.brand : C.border}`,
-                  background: selected ? C.brandSoft : C.white,
+                  background: selected ? C.brandSoft : C.surface,
                   color: selected ? C.brand : C.sub,
                   fontSize: 12,
                   cursor: !state || savingInterval ? "default" : "pointer",
@@ -361,7 +361,7 @@ export function RegionSettings({ onChanged }: { onChanged?: (s: api.RegionState)
       {state?.mode !== "off" && (
         <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 13, color: busy ? C.muted : v?.origin.kind === "mainland" && v.tunnel ? "#B36B00" : t?.color ?? C.muted }}>
+            <span style={{ fontSize: 13, color: busy ? C.muted : v?.origin.kind === "mainland" && v.tunnel ? C.warn : t?.color ?? C.muted }}>
               {busy ? "正在检测当前出口…" : <>{t?.flag} 探测出口：{v ? api.regionLabel(v) : "尚未检测"}</>}
               {!busy && v?.ip && <span style={{ color: C.muted, fontSize: 12 }}>（{v.ip}）</span>}
             </span>
@@ -371,7 +371,7 @@ export function RegionSettings({ onChanged }: { onChanged?: (s: api.RegionState)
           </div>
 
           {!busy && v?.origin.kind === "mainland" && v.tunnel && (
-            <div style={{ fontSize: 12, color: "#B36B00", lineHeight: 1.7 }}>
+            <div style={{ fontSize: 12, color: C.warn, lineHeight: 1.7 }}>
               ⚠️ 检测到分流代理 / VPN：外网探针可达，但国内探测域名仍走大陆出口。
               目标站点的实际出口取决于代理规则；已按当前模式将此状态作为网络异常处理。
             </div>

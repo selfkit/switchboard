@@ -368,7 +368,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
                   padding: "6px 10px",
                   borderRadius: 6,
                   border: `1px solid ${selected ? C.brand : C.border}`,
-                  background: selected ? C.brandSoft : C.white,
+                  background: selected ? C.brandSoft : C.surface,
                   color: selected ? C.brand : C.sub,
                   fontSize: 12,
                   cursor: savingAutoLock ? "default" : "pointer",
@@ -409,7 +409,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 460, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
+            style={{ width: 460, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
           >
             <div style={{ fontSize: 18, color: C.text }}>从备份导入</div>
             <div
@@ -458,7 +458,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 420, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
+            style={{ width: 420, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
           >
             <div style={{ fontSize: 18, color: C.danger }}>确认清空所有账户数据？</div>
             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
@@ -492,7 +492,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 420, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 16 }}
+            style={{ width: 420, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 16 }}
           >
             <div style={{ fontSize: 18, color: C.text }}>备份已导出</div>
             <div

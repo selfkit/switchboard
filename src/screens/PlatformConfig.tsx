@@ -11,8 +11,8 @@ const STATUS_ORDER = ["待配置", "未验证", "已验证", "走扫码，跳过
 
 function status(c: PlatformConfig) {
   if (c.trigger_event === "skip") return { text: "走扫码，跳过", color: C.muted };
-  if (!c.username_selector || !c.password_selector) return { text: "待配置", color: "#D48806" };
-  return c.verified ? { text: "已验证", color: "#00A870" } : { text: "未验证", color: C.muted };
+  if (!c.username_selector || !c.password_selector) return { text: "待配置", color: C.warn };
+  return c.verified ? { text: "已验证", color: C.success } : { text: "未验证", color: C.muted };
 }
 
 /** PlatformConfig.dc.html —— 选择器配置表，可直接编辑，也可由"手动指认"写回 */
@@ -139,7 +139,7 @@ export default function PlatformConfigScreen({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{ width: 460, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
+            style={{ width: 460, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
           >
             <div style={{ fontSize: 18, color: C.text }}>{editing.platform}</div>
 

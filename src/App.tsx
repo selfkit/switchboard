@@ -486,7 +486,7 @@ export default function App() {
             position: "fixed",
             left: 24,
             bottom: 24,
-            background: C.white,
+            background: C.surface,
             border: `1px solid ${C.danger}`,
             borderRadius: 8,
             padding: "10px 14px",

@@ -121,7 +121,10 @@ export default function AccountForm({ initial, isNew, copiedFrom, accounts, onSa
           <Field
             label="TOTP 密钥（可选）"
             hint={
-              <>
+              // 说明很长，常驻会占掉半屏；要看的人点开
+              <details>
+                <summary style={{ cursor: "pointer", color: C.brand, width: "fit-content" }}>这是什么？密钥在哪找？</summary>
+                <div style={{ marginTop: 6 }}>
                 作用：登录要两步验证码时不用掏手机，这里直接出码、会话页一键填入。原理是验证码由「密钥 + 当前时间」算出来，
                 手机验证器（Google / 微软 / 小程序）存的也是这个密钥，两边拿到同一个就出同样的码，手机那边照常能用。
                 <br />
@@ -133,7 +136,8 @@ export default function AccountForm({ initial, isNew, copiedFrom, accounts, onSa
                 已经绑好的账号平台不会再显示密钥，要解绑后重新绑定一次。
                 <br />
                 用不了的：短信 / 邮件验证码、微信扫码确认、App 里点「确认登录」这类推送——它们不是 TOTP，没有密钥。
-              </>
+                </div>
+              </details>
             }
           >
             <div style={{ display: "flex", gap: 8 }}>
@@ -213,7 +217,7 @@ export default function AccountForm({ initial, isNew, copiedFrom, accounts, onSa
       </div>
 
       {/* 字段多了以后底部按钮会被滚到看不见，钉在底下 */}
-      <div style={{ flexShrink: 0, borderTop: `1px solid ${C.border}`, background: C.white, padding: "12px 0" }}>
+      <div style={{ flexShrink: 0, borderTop: `1px solid ${C.border}`, background: C.surface, padding: "12px 0" }}>
         <div style={{ width: 680, margin: "0 auto", display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end" }}>
           <ErrorLine text={err} />
           <div style={{ flexGrow: 1 }} />

@@ -66,6 +66,7 @@
 
 - **演示模式**：一套假账号 + 本机模拟登录页，给别人演示不碰真实数据，还能一键自动演示并录屏
 - 在线更新（安装包带签名校验）
+- 跟随系统外观自动切换深色模式
 - macOS（Apple Silicon / Intel 通用包）；Windows 版已适配，还没在真机上完整跑过
 
 ## 目录
@@ -215,3 +216,7 @@ cd docs/prototype && python3 -m http.server 8777
 ## 说明
 
 `.dc.html` 是设计工具导出的格式，用 `{{表达式}}`、`<sc-for>`、`<sc-if>` 做数据绑定。[docs/prototype/support.js](docs/prototype/support.js) 是为本地预览补的极简运行时（约 60 行），仅供看原型用。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 tan

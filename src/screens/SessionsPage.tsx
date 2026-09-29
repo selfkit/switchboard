@@ -45,6 +45,8 @@ export default function SessionsPage({
   const [query, setQuery] = useState("");
   const [onlyOnline, setOnlyOnline] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  /** 当前账号的「更多操作」展开没有。切账号就收起 */
+  const [more, setMore] = useState(false);
   /** 页签条上的地址输入框。null = 收起 */
   const [newUrl, setNewUrl] = useState<string | null>(null);
 
@@ -146,6 +148,8 @@ export default function SessionsPage({
     return s.loaded ? "ok" : "loading";
   };
   const current = accounts.find((a) => a.id === active);
+  useEffect(() => setMore(false), [active]);
+  const fillTip = `先在右边页面上点一下要填的框，再点这里。值同时会复制到剪贴板，填不进去就 ${MOD}V`;
   // 焦点在主窗口（刚点过侧栏）时按 ⌘F 也要能查；焦点在页面里时页面自己的 agent 接
   useEffect(() => {
     if (!current) return;
@@ -219,7 +223,7 @@ export default function SessionsPage({
         padding: "6px 8px",
         borderRadius: 6,
         border: `1px solid ${C.border}`,
-        background: C.white,
+        background: C.surface,
         fontSize: 11,
         color: C.sub,
         cursor: "pointer",
@@ -282,7 +286,7 @@ export default function SessionsPage({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="搜索账号、归属或平台"
           aria-label="搜索会话账号"
-          style={{ width: "100%", boxSizing: "border-box", height: 32, border: `1px solid ${C.border}`, borderRadius: 7, background: C.white, padding: "0 9px", fontSize: 11, color: C.text, outlineColor: C.brand }}
+          style={{ width: "100%", boxSizing: "border-box", height: 32, border: `1px solid ${C.border}`, borderRadius: 7, background: C.surface, padding: "0 9px", fontSize: 11, color: C.text, outlineColor: C.brand }}
         />
         <div style={{ display: "flex", gap: 6 }}>
           {([false, true] as const).map((onlineOnly) => (
@@ -290,7 +294,7 @@ export default function SessionsPage({
               key={String(onlineOnly)}
               type="button"
               onClick={() => setOnlyOnline(onlineOnly)}
-              style={{ flex: 1, border: `1px solid ${onlyOnline === onlineOnly ? C.brand : C.border}`, background: onlyOnline === onlineOnly ? C.brandSoft : C.white, color: onlyOnline === onlineOnly ? C.brand : C.sub, borderRadius: 6, padding: "5px 0", fontSize: 11, cursor: "pointer" }}
+              style={{ flex: 1, border: `1px solid ${onlyOnline === onlineOnly ? C.brand : C.border}`, background: onlyOnline === onlineOnly ? C.brandSoft : C.surface, color: onlyOnline === onlineOnly ? C.brand : C.sub, borderRadius: 6, padding: "5px 0", fontSize: 11, cursor: "pointer" }}
             >
               {onlineOnly ? `已打开 ${online.size}` : `全部 ${accounts.length}`}
             </button>
@@ -313,17 +317,17 @@ export default function SessionsPage({
                   gap: 8,
                   padding: "6px 8px",
                   borderRadius: 7,
-                  background: cur ? C.white : "transparent",
+                  background: cur ? C.surface : "transparent",
                   border: `1px solid ${cur ? C.border : "transparent"}`,
                   cursor: "pointer",
                 }}
               >
-                <span style={{ width: 6, height: 6, borderRadius: 999, flexShrink: 0, background: on ? "#00A870" : C.borderStrong }} />
+                <span style={{ width: 6, height: 6, borderRadius: 999, flexShrink: 0, background: on ? C.success : C.borderStrong }} />
                 <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, flexGrow: 1 }}>
                   <span style={{ fontSize: 12, color: cur ? C.text : C.sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {a.related_app || a.username}
                   </span>
-                  <span style={{ fontSize: 10, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {/* 归属放前面：同平台同名的两个账号，能分清的就是它 */}
                     <span style={{ color: C.sub }}>{a.owner_type}</span> · {a.platform}
                     {busy === a.id && " · 打开中…"}
@@ -349,82 +353,76 @@ export default function SessionsPage({
                 )}
               </div>
 
-              {/* 当前这个账号的操作都挂在它自己下面，不用去别的地方找 */}
+              {/*
+                当前账号的操作挂在它自己下面。只露最常用的填充，其余收进「更多」：
+                全摊开是十来个按钮，会把别的在线账号挤出屏幕，多账号切换反倒找不到人。
+                「更多」就地展开而不是弹出菜单——右边整块是原生 webview，HTML 弹层会被它盖住
+              */}
               {cur && on && current && (
-                <div style={{ padding: "8px 4px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-                  {/* 刷新任何时候都得在：页面打不开的时候恰恰是最需要它的时候 */}
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {action("刷新页面", () => run(() => api.reloadSession(a.id)), "重新加载这个页面")}
-                    {action("编辑账号", () => onEdit(a), "修改当前账号及附加字段")}
-                  </div>
-
-                  {/*
-                    页面没加载出来时，填充/指认/取地址全都无从谈起——
-                    「设为直达页」更是会去问 WKWebView 要 URL，那时候它是 nil。
-                    与其摆一排点了就报错的按钮，不如直接不显示。
-                  */}
-                  {currentState !== "ok" ? (
-                    <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.6 }}>
-                      {currentState === "failed" ? "页面没打开，先刷新" : "页面加载中…"}
+                <div style={{ padding: "6px 4px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {/* 页面没加载出来时填充无从谈起，与其摆一排点了就报错的按钮，不如直说 */}
+                  {currentState === "ok" ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {action("填账号", () => fill(a.id, "username", "账号"), fillTip)}
+                      {action("填密码", () => fill(a.id, "password", "密码"), fillTip)}
+                      {current.totp_secret && action("填验证码", () => fill(a.id, "totp", "验证码"), fillTip)}
                     </div>
                   ) : (
-                    <>
-                      <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.5 }}>
-                        先在右边页面上点一下要填的框，再点下面。值同时会复制到剪贴板，填不进去就 {MOD}V：
-                      </div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {action("填账号", () => fill(a.id, "username", "账号"))}
-                        {action("填密码", () => fill(a.id, "password", "密码"))}
-                      </div>
-                      {current.totp_secret && (
-                        <div style={{ display: "flex", gap: 6 }}>{action("填验证码", () => fill(a.id, "totp", "验证码"))}</div>
-                      )}
-                      {current.extra_fields.some((field) => field.value) && (
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
-                          {current.extra_fields.map((field, index) => field.value ? (
-                            <div key={index} style={{ minWidth: 0 }}>
-                              {action(`填${field.label}`, () => fill(a.id, `extra:${index}`, field.label), `先点右边的输入框，再填入${field.label}；同时会复制到剪贴板`)}
-                            </div>
-                          ) : null)}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {action(
-                          "设为直达页",
-                          () =>
-                            run(async () => {
-                              await api.pinCurrentUrl(a.id);
-                              onAccountsChanged();
-                            }, "已把当前页面设为该账号的登录直达 URL"),
-                          "把右边现在停的这个地址存成该账号的登录直达 URL，下次直接开这里",
-                        )}
-                        {action(
-                          "指认输入框",
-                          () =>
-                            run(
-                              () => api.setPickMode(a.id, true),
-                              "已进入指认模式：到右边页面上先点账号框（标 1），再点密码框（标 2），点完自动记住",
-                            ),
-                          "教一次这个平台的账号框和密码框在哪，之后自动填充",
-                        )}
-                      </div>
-                    </>
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+                      {currentState === "failed" ? "页面没打开，先刷新" : "页面加载中…"}
+                    </div>
                   )}
-                  {/*
-                    在网站上退出登录后 cookie 可能全空，快照会跳过空值，旧快照就留着，
-                    下次打开又被塞回去"自动登录"。页面打不开时也可能是登录态坏了，所以一直显示
-                  */}
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {action(
-                      "清除登录状态",
-                      () =>
-                        run(async () => {
-                          await api.clearLogin(a.id);
-                          setSessions(await api.listActiveSessions());
-                        }, "已清除这个账号保存的登录状态，页面已关闭；再打开需要重新登录"),
-                      "关掉页面，并删掉这个账号保存的 cookie 和本机登录数据，下次打开需要重新登录",
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMore(!more)}
+                    style={{ border: 0, background: "transparent", color: C.sub, fontSize: 11, padding: "2px 0", cursor: "pointer" }}
+                  >
+                    {more ? "收起 ▴" : "更多操作 ▾"}
+                  </button>
+                  {more && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                      {currentState === "ok" && current.extra_fields.map((field, index) => field.value ? (
+                        <div key={index} style={{ minWidth: 0, display: "flex" }}>
+                          {action(`填${field.label}`, () => fill(a.id, `extra:${index}`, field.label), fillTip)}
+                        </div>
+                      ) : null)}
+                      {/* 刷新任何时候都得在：页面打不开的时候恰恰是最需要它的时候 */}
+                      {action("刷新页面", () => run(() => api.reloadSession(a.id)), "重新加载这个页面")}
+                      {action("编辑账号", () => onEdit(a), "修改当前账号及附加字段")}
+                      {/* 「设为直达页」会去问 WKWebView 要 URL，页面没加载出来时它是 nil，见 session.rs 的 url_is_safe */}
+                      {currentState === "ok" && action(
+                        "设为直达页",
+                        () =>
+                          run(async () => {
+                            await api.pinCurrentUrl(a.id);
+                            onAccountsChanged();
+                          }, "已把当前页面设为该账号的登录直达 URL"),
+                        "把右边现在停的这个地址存成该账号的登录直达 URL，下次直接开这里",
+                      )}
+                      {currentState === "ok" && action(
+                        "指认输入框",
+                        () =>
+                          run(
+                            () => api.setPickMode(a.id, true),
+                            "已进入指认模式：到右边页面上先点账号框（标 1），再点密码框（标 2），点完自动记住",
+                          ),
+                        "教一次这个平台的账号框和密码框在哪，之后自动填充",
+                      )}
+                      {/*
+                        在网站上退出登录后 cookie 可能全空，快照会跳过空值，旧快照就留着，
+                        下次打开又被塞回去"自动登录"。页面打不开时也可能是登录态坏了，所以一直显示
+                      */}
+                      {action(
+                        "清除登录状态",
+                        () =>
+                          run(async () => {
+                            await api.clearLogin(a.id);
+                            setSessions(await api.listActiveSessions());
+                          }, "已清除这个账号保存的登录状态，页面已关闭；再打开需要重新登录"),
+                        "关掉页面，并删掉这个账号保存的 cookie 和本机登录数据，下次打开需要重新登录",
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -509,7 +507,7 @@ export default function SessionsPage({
                     padding: "4px 9px",
                     borderRadius: 6,
                     // 选中态跟侧栏导航一个做法：白底 + 描边 + 轻阴影，不"忽然变白"
-                    background: on ? C.white : "transparent",
+                    background: on ? C.surface : "transparent",
                     border: `1px solid ${on ? C.border : "transparent"}`,
                     boxShadow: on ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
                     color: on ? C.text : C.sub,
@@ -520,7 +518,7 @@ export default function SessionsPage({
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {/* 弹窗是独立窗口，标个 ↗ 提示"点它是把那个窗口叫到前面"，不是在这儿切 */}
                     {tab.external && "↗ "}
-                    {i === 0 ? "主页面" : tab.title.trim() || hostOf(tab.url) || (tab.external ? "弹窗" : "新页签")}
+                    {tab.title.trim() || hostOf(tab.url) || (i === 0 ? "主页面" : tab.external ? "弹窗" : "新页签")}
                     {tab.failed && " · 打不开"}
                     {!tab.external && !tab.failed && !tab.loaded && " · 加载中"}
                   </span>
@@ -570,7 +568,7 @@ export default function SessionsPage({
                     setSessions(await api.listActiveSessions());
                   });
                 }}
-                style={{ flexShrink: 0, width: 280, padding: "3px 8px", borderRadius: 6, border: `1px solid ${C.brand}`, outline: "none", fontSize: 11, color: C.text, background: C.white }}
+                style={{ flexShrink: 0, width: 280, padding: "3px 8px", borderRadius: 6, border: `1px solid ${C.brand}`, outline: "none", fontSize: 11, color: C.text, background: C.surface }}
               />
             )}
             {/* 浏览器该有的那几下。页签条右端，只占一行 */}
@@ -587,7 +585,7 @@ export default function SessionsPage({
                     padding: "3px 8px",
                     borderRadius: 6,
                     border: `1px solid ${C.border}`,
-                    background: C.white,
+                    background: C.surface,
                     color: C.sub,
                     fontSize: 11,
                     lineHeight: 1.4,

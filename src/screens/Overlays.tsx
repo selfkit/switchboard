@@ -70,7 +70,7 @@ export function QuickSwitch({
 
   return (
     <Backdrop onClose={onClose} align="top">
-      <div style={{ width: 520, background: C.white, borderRadius: 12, overflow: "hidden", boxShadow: "0 8px 30px rgba(0,0,0,0.18)" }}>
+      <div style={{ width: 520, background: C.surface, borderRadius: 12, overflow: "hidden", boxShadow: "0 8px 30px rgba(0,0,0,0.18)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: `1px solid ${C.border}` }}>
           <span style={{ fontSize: 11, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 6px" }}>{MOD}K</span>
           <input
@@ -100,7 +100,7 @@ export function QuickSwitch({
                   cursor: "pointer",
                 }}
               >
-                <div style={{ width: 8, height: 8, borderRadius: 999, background: online.has(a.id) ? "#00A870" : C.border, flexShrink: 0 }} />
+                <div style={{ width: 8, height: 8, borderRadius: 999, background: online.has(a.id) ? C.success : C.border, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: C.text }}>{a.platform}</span>
                 <span style={{ fontSize: 13, color: C.sub, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {a.related_app || a.username}
@@ -150,7 +150,7 @@ export function CopyGate({ label, onCancel, onPassed }: { label: string; onCance
 
   return (
     <Backdrop onClose={onCancel}>
-      <div style={{ width: 380, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ width: 380, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
           <div style={{ fontSize: 17, color: C.text }}>复制{label}</div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 6, lineHeight: 1.7 }}>
@@ -198,6 +198,13 @@ export function TotpCode({
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState("");
   const timer = useRef<number>();
+  const copy = () => {
+    if (!state) return;
+    void onCopy("验证码", state.code).then((r) => {
+      // 验完闸门会把这个框放回来，所以这里说得出话；取消就什么都不说
+      if (r !== "cancel") setCopied(r === "done" ? "已复制到剪贴板" : "复制失败，请检查剪贴板权限");
+    });
+  };
 
   useEffect(() => {
     const tick = () =>
@@ -212,7 +219,7 @@ export function TotpCode({
 
   return (
     <Backdrop onClose={onClose}>
-      <div style={{ width: 380, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 18, alignItems: "center" }}>
+      <div style={{ width: 380, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 18, alignItems: "center" }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 15, color: C.text }}>
             {account.platform} · {account.related_app || account.username}
@@ -225,13 +232,7 @@ export function TotpCode({
         ) : (
           <>
             <span
-              onClick={() => {
-                if (!state) return;
-                void onCopy("验证码", state.code).then((r) => {
-                  // 验完闸门会把这个框放回来，所以这里说得出话；取消就什么都不说
-                  if (r !== "cancel") setCopied(r === "done" ? "已复制到剪贴板" : "复制失败，请检查剪贴板权限");
-                });
-              }}
+              onClick={copy}
               title="点击复制"
               style={{ fontSize: 40, letterSpacing: 6, color: C.text, fontFamily: "ui-monospace, monospace", cursor: "pointer" }}
             >
@@ -241,14 +242,21 @@ export function TotpCode({
               <div style={{ width: "100%", height: 4, borderRadius: 999, background: C.bg, overflow: "hidden" }}>
                 <div style={{ width: `${((state?.remaining ?? 0) / 30) * 100}%`, height: "100%", background: C.brand, transition: "width 1s linear" }} />
               </div>
-              <div style={{ fontSize: 12, color: copied ? (copied.startsWith("已复制") ? "#00A870" : C.danger) : C.muted }}>
-                {copied || (state ? `${state.remaining} 秒后刷新，点数字可复制` : "生成中…")}
+              <div style={{ fontSize: 12, color: copied ? (copied.startsWith("已复制") ? C.success : C.danger) : C.muted }}>
+                {copied || (state ? `${state.remaining} 秒后刷新` : "生成中…")}
               </div>
             </div>
           </>
         )}
 
-        <Button onClick={onClose}>返回</Button>
+        <div style={{ display: "flex", gap: 10 }}>
+          {!err && (
+            <Button kind="primary" onClick={copy} disabled={!state}>
+              复制
+            </Button>
+          )}
+          <Button onClick={onClose}>返回</Button>
+        </div>
       </div>
     </Backdrop>
   );

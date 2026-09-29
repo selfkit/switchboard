@@ -10,7 +10,7 @@ export default function DeleteConfirm({ account, onCancel, onConfirm }: { accoun
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 380, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 16 }}
+        style={{ width: 380, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 16 }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ fontSize: 18, color: C.text }}>删除这个账号？</div>

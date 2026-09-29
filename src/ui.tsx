@@ -26,20 +26,28 @@ export function Brand({ size = 17 }: { size?: number }) {
   );
 }
 
-/** 原型里反复出现的那几个色值 */
+/**
+ * 调色板。值是 CSS 变量，浅色 / 深色两套定义在 index.html，跟着系统外观切换，组件里不用管。
+ * 文字色都按 4.5:1 对比度挑过（浅色对白底和 bg，深色对 surface 和 bg）
+ */
 export const C = {
   /** 图标里的深蓝，品牌字用它，跟图标描边同色 */
-  ink: "#323668",
-  brand: "#0052D9",
-  brandSoft: "rgba(0,82,217,0.08)",
-  text: "#1D2129",
-  sub: "#4E5969",
-  muted: "#86909C",
-  border: "#E5E6EB",
-  borderStrong: "#D4D6DB",
-  bg: "#F2F3F5",
-  white: "#FFFFFF",
-  danger: "#E34D59",
+  ink: "var(--sb-ink)",
+  brand: "var(--sb-brand)",
+  brandSoft: "var(--sb-brand-soft)",
+  text: "var(--sb-text)",
+  sub: "var(--sb-sub)",
+  muted: "var(--sb-muted)",
+  border: "var(--sb-border)",
+  borderStrong: "var(--sb-border-strong)",
+  bg: "var(--sb-bg)",
+  /** 卡片、输入框、弹层的底色：浅色下是白，深色下是深灰 */
+  surface: "var(--sb-surface)",
+  /** 品牌色 / 危险色按钮上的字，两种外观都是白 */
+  onBrand: "#FFFFFF",
+  danger: "var(--sb-danger)",
+  success: "var(--sb-success)",
+  warn: "var(--sb-warn)",
 };
 
 export const inputStyle: CSSProperties = {
@@ -48,7 +56,7 @@ export const inputStyle: CSSProperties = {
   padding: "10px 12px",
   borderRadius: 7,
   border: `1px solid ${C.borderStrong}`,
-  background: C.white,
+  background: C.surface,
   fontSize: 14,
   color: C.text,
 };
@@ -88,7 +96,7 @@ export function Combo({
         onBlur={() => setOpen(false)}
         style={{ ...inputStyle, paddingRight: 28 }}
       />
-      <span style={{ position: "absolute", right: 10, top: 12, fontSize: 10, color: C.muted, pointerEvents: "none" }}>▾</span>
+      <span style={{ position: "absolute", right: 10, top: 12, fontSize: 11, color: C.muted, pointerEvents: "none" }}>▾</span>
 
       {open && (hits.length > 0 || isNew) && (
         <div
@@ -100,7 +108,7 @@ export function Combo({
             right: 0,
             maxHeight: 220,
             overflowY: "auto",
-            background: C.white,
+            background: C.surface,
             border: `1px solid ${C.border}`,
             borderRadius: 8,
             boxShadow: "0 6px 20px rgba(0,0,0,0.10)",
@@ -156,10 +164,10 @@ type BtnProps = {
 export function Button({ children, onClick, kind = "ghost", disabled, style, type = "button" }: BtnProps) {
   const skin: CSSProperties =
     kind === "primary"
-      ? { background: C.brand, color: C.white, border: "none", fontWeight: 500 }
+      ? { background: C.brand, color: C.onBrand, border: "none", fontWeight: 500 }
       : kind === "danger"
-        ? { background: C.danger, color: C.white, border: "none", fontWeight: 500 }
-        : { background: C.white, color: C.sub, border: `1px solid ${C.borderStrong}` };
+        ? { background: C.danger, color: C.onBrand, border: "none", fontWeight: 500 }
+        : { background: C.surface, color: C.sub, border: `1px solid ${C.borderStrong}` };
   return (
     <button
       type={type}
@@ -210,7 +218,7 @@ export function Card({ children, style }: { children: ReactNode; style?: CSSProp
   return (
     <div
       style={{
-        background: C.white,
+        background: C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: 12,
         padding: 24,

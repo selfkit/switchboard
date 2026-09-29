@@ -138,7 +138,7 @@ export default function AdaptHelp({ onClose, onImported }: { onClose: () => void
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: 680, background: C.white, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 22 }}
+        style={{ width: 680, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 22 }}
       >
         <div>
           <div style={{ fontSize: 18, color: C.text }}>新平台怎么适配（不用重新打包）</div>
