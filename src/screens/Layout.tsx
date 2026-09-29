@@ -74,10 +74,13 @@ export function AppShell({ children, split, demo, tour, onStopTour, region, chec
             : "transparent",
         }}
       >
-        {/* 侧栏那一列的顶上放品牌，像侧栏的标题；macOS 左上角有红绿灯，让开它 */}
+        {/*
+          侧栏那一列的顶上放品牌标。macOS 左边是红绿灯，品牌标靠这一列的右边放，两样之间留出空，不挤在一起；
+          Windows 没有红绿灯，靠左。
+          marginRight 抵掉顶栏的 gap：槽位要正好从侧栏右边线开始，页面里的东西才跟下面的内容对齐
+        */}
         {split && (
-          // marginRight 抵掉顶栏的 gap：槽位要正好从侧栏右边线开始，页面里的东西才跟下面的内容对齐
-          <div style={{ width: SIDEBAR_W, marginRight: -10, flexShrink: 0, alignSelf: "stretch", display: "flex", alignItems: "center", boxSizing: "border-box", paddingLeft: IS_MAC ? 84 : 16 }}>
+          <div style={{ width: SIDEBAR_W, marginRight: -10, flexShrink: 0, alignSelf: "stretch", boxSizing: "border-box", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: IS_MAC ? "flex-end" : "flex-start" }}>
             <Brand size={14} />
           </div>
         )}

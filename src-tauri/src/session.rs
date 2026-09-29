@@ -25,7 +25,8 @@ use tauri::{
 
 /// 主窗口左侧导航栏宽度，账号页面从这里开始铺
 const SIDEBAR_W: f64 = 224.0;
-/// 顶部留给 App 自己画的一条（品牌标、网络检测、账号列表的搜索都在这一行）。52 是 macOS 工具栏的标准高度，红绿灯见 tauri.conf.json 的 trafficLightPosition。
+/// 顶部留给 App 自己画的一条（网络检测、账号列表的搜索都在这一行）。52 是 macOS 工具栏的标准高度，
+/// 红绿灯也摆在这一条的正中，见 `place_traffic_lights`。
 /// 账号页面是原生 webview，会盖住网页画的一切，所以只能给它让出这块地方。
 const TOPBAR_H: f64 = 52.0;
 /// 顶栏下面那条页签条的高度。**必须和前端 Layout.tsx 的 TABS_H 一致**，
@@ -321,11 +322,148 @@ pub fn set_visible(app: &AppHandle, visible: bool) -> Result<(), String> {
 pub fn watch_main_window(app: &AppHandle) {
     let Ok(win) = main_window(app) else { return };
     let app2 = app.clone();
+    #[cfg(target_os = "macos")]
+    {
+        place_traffic_lights(&win);
+        follow_traffic_lights(&win);
+    }
+    // DEBUG-TL 临时：只读不摆，看 AppKit 有没有把它们挪回去；中间拉一下窗口宽度试改大小
+    {
+        let w = win.clone();
+        std::thread::spawn(move || {
+            let log = |tag: &'static str| {
+                let w2 = w.clone();
+                let _ = w.run_on_main_thread(move || debug_log_lights(&w2, tag));
+            };
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            log("after3s");
+            if let Ok(size) = w.inner_size() {
+                let _ = w.set_size(tauri::PhysicalSize::new(size.width + 2, size.height));
+                std::thread::sleep(std::time::Duration::from_millis(800));
+                let _ = w.set_size(size);
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+                log("after-resize");
+            }
+        });
+    }
+    #[cfg(target_os = "macos")]
+    let lights = win.clone();
     win.on_window_event(move |e| {
         if matches!(e, WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }) {
             refresh_layout(&app2);
         }
+        // AppKit 在这几个时候会把红绿灯摆回默认位置
+        #[cfg(target_os = "macos")]
+        if matches!(
+            e,
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(_) | WindowEvent::ThemeChanged(_)
+        ) {
+            place_traffic_lights(&lights);
+        }
     });
+}
+
+/// 摆红绿灯时 setFrameOrigin 会同步发 frame 变化通知、又回到 place_traffic_lights；挡掉这层重入
+#[cfg(target_os = "macos")]
+static PLACING_LIGHTS: AtomicBool = AtomicBool::new(false);
+
+/// AppKit 会在各种时候把红绿灯摆回默认位置：窗口刚显示出来、改标题（开发版启动时就改）、改大小……
+/// 窗口事件兜不全（实测启动后被挪回去时一个事件都没有），所以直接盯着关闭按钮的 frame，一动就摆回来
+#[cfg(target_os = "macos")]
+fn follow_traffic_lights(win: &Window) {
+    use block2::RcBlock;
+    use objc2::runtime::AnyObject;
+    use objc2_app_kit::{NSViewFrameDidChangeNotification, NSWindow, NSWindowButton};
+    use objc2_foundation::{NSNotification, NSNotificationCenter};
+    use std::ptr::NonNull;
+    let Ok(ptr) = win.ns_window() else { return };
+    // SAFETY: 同 place_traffic_lights
+    let ns = unsafe { &*(ptr as *const NSWindow) };
+    let Some(close) = ns.standardWindowButton(NSWindowButton::CloseButton) else { return };
+    close.setPostsFrameChangedNotifications(true);
+    let w = win.clone();
+    let block = RcBlock::new(move |_: NonNull<NSNotification>| place_traffic_lights(&w));
+    let obj: &AnyObject = &close;
+    // SAFETY: queue 传 None = 回调在发通知的线程上同步跑，这个通知是 AppKit 在主线程发的。
+    // 返回的观察者令牌故意不释放：要跟窗口一样一直在，App 退出才算完
+    let token = unsafe {
+        NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+            Some(NSViewFrameDidChangeNotification),
+            Some(obj),
+            None,
+            &block,
+        )
+    };
+    std::mem::forget(token);
+}
+
+/// macOS 红绿灯挪到顶栏（TOPBAR_H）的正中，跟顶栏里的品牌标、搜索框一条线。
+///
+/// 不用 tauri.conf.json 的 trafficLightPosition：tao 只在内容视图的 drawRect 里摆它，
+/// 而这个窗口整块被 webview 盖着，drawRect 基本不来——实测 y 从 19 改到 27，红绿灯纹丝不动。
+/// 所以自己摆，窗口事件里重摆（见 `watch_main_window`）。只在主线程调：setup 和窗口事件回调都在主线程
+#[cfg(target_os = "macos")]
+fn place_traffic_lights(win: &Window) {
+    if PLACING_LIGHTS.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    put_traffic_lights(win);
+    PLACING_LIGHTS.store(false, Ordering::SeqCst);
+}
+
+#[cfg(target_os = "macos")]
+fn put_traffic_lights(win: &Window) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+    use objc2_foundation::NSPoint;
+    /// 第一颗按钮的左边距，跟系统 52pt 工具栏窗口一样
+    const LEFT: f64 = 20.0;
+    let Ok(ptr) = win.ns_window() else { return };
+    // SAFETY: ns_window() 给的就是这个窗口的 NSWindow，窗口活着它就活着；调用方保证在主线程
+    let ns = unsafe { &*(ptr as *const NSWindow) };
+    let buttons: Vec<_> = [NSWindowButton::CloseButton, NSWindowButton::MiniaturizeButton, NSWindowButton::ZoomButton]
+        .into_iter()
+        .filter_map(|b| ns.standardWindowButton(b))
+        .collect();
+    let Some(close) = buttons.first() else { return };
+    // SAFETY: 只是读视图层级（按钮 → 标题栏视图 → 标题栏容器），跟 tao 摆红绿灯走的同一条路
+    let Some(bar) = (unsafe { close.superview() }) else { return };
+    let Some(container) = (unsafe { bar.superview() }) else { return };
+    // 标题栏那块默认只有系统标题栏高，按钮摆到 26 就出界了：先撑到顶栏高度、贴着窗口顶
+    let win_h = ns.frame().size.height;
+    let mut c = container.frame();
+    c.size.height = TOPBAR_H;
+    c.origin.y = win_h - TOPBAR_H;
+    container.setFrame(c);
+    let mut b = bar.frame();
+    b.origin.y = 0.0;
+    b.size.height = TOPBAR_H;
+    bar.setFrame(b);
+    let gap = buttons.get(1).map(|m| m.frame().origin.x - close.frame().origin.x).unwrap_or(20.0);
+    for (i, btn) in buttons.iter().enumerate() {
+        // 上下居中是对称的，父视图翻不翻转（flipped）都一样
+        let h = btn.frame().size.height;
+        btn.setFrameOrigin(NSPoint::new(LEFT + i as f64 * gap, (TOPBAR_H - h) / 2.0));
+    }
+    debug_log_lights(win, "placed");
+}
+
+// DEBUG-TL 临时：把按钮在窗口里的实际位置写出来核对，核完删
+fn debug_log_lights(win: &Window, tag: &str) {
+    use objc2_app_kit::{NSWindow, NSWindowButton};
+    use std::io::Write;
+    let Ok(ptr) = win.ns_window() else { return };
+    let ns = unsafe { &*(ptr as *const NSWindow) };
+    let fh = ns.frame().size.height;
+    let mut out = format!("{tag} win_h={fh:.1} ");
+    for b in [NSWindowButton::CloseButton, NSWindowButton::MiniaturizeButton, NSWindowButton::ZoomButton] {
+        if let Some(btn) = ns.standardWindowButton(b) {
+            let r = btn.convertRect_toView(btn.bounds(), None);
+            out += &format!("[x={:.1} center_from_top={:.1}] ", r.origin.x, fh - (r.origin.y + r.size.height / 2.0));
+        }
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/sb-tl.log") {
+        let _ = writeln!(f, "{out}");
+    }
 }
 
 /// 读出这个账号当前的全部 cookie，序列化成 Set-Cookie 字符串数组。
