@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #F2F3F5; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; position: relative;">
+
+  <div style="position: absolute; top: 48px; left: 64px; display: flex; align-items: center; gap: 10px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #0052D9;"></div>
+    <span style="font-family: 'Inter', sans-serif; font-size: 20px; color: #1D2129;">Switchboard</span>
+  </div>
+
+  <div style="width: 380px; display: flex; flex-direction: column; gap: 24px; align-items: center;">
+    <div style="display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center;">
+      <h1 style="margin: 0; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px; color: #1D2129;">登录 Switchboard</h1>
+      <div style="font-size: 13px; color: #4E5969;">这是你系统里的账号，管理阿里云 / 腾讯云等外部账号库</div>
+    </div>
+
+    <div style="width: 100%; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="u" style="font-size: 12px; color: #4E5969;">用户名 / 邮箱</label>
+        <input id="u" type="text" placeholder="tan@example.com" style="width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: 1px solid #D4D6DB; background: #FFFFFF; font-size: 15px; font-family: 'Inter', sans-serif; color: #1D2129;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="p" style="font-size: 12px; color: #4E5969;">主密码</label>
+        <input id="p" type="password" placeholder="输入主密码" style="width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: 1px solid #D4D6DB; background: #FFFFFF; font-size: 15px; font-family: 'Inter', sans-serif; color: #1D2129;">
+      </div>
+
+      <a href="Main.dc.html" style="width: 100%;">
+        <button style="width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: none; background: #0052D9; color: #FFFFFF; font-size: 15px; font-family: 'Inter', sans-serif; font-weight: 500;">登录</button>
+      </a>
+    </div>
+
+    <div style="font-size: 13px; color: #4E5969;">还没有账号？<a href="Register.dc.html" style="color: #0052D9; font-weight: 500;">创建一个</a></div>
+    <div style="font-size: 12px; color: #86909C;">密钥由本机 Argon2 派生，从不上传</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

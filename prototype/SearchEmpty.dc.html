@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; background: #FFFFFF;">
+
+  <div style="width: 224px; flex-shrink: 0; box-sizing: border-box; padding: 28px 20px; background: #F2F3F5; display: flex; flex-direction: column; gap: 28px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #0052D9;"></div>
+      <span style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">Switchboard</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div style="font-size: 11px; color: #86909C; padding: 0 8px 6px;">归属</div>
+      <div style="padding: 9px 10px; border-radius: 7px; background: #FFFFFF; font-size: 13px; color: #1D2129;">全部账号</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column;">
+    <div style="height: 72px; flex-shrink: 0; box-sizing: border-box; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E5E6EB;">
+      <input value="抖音" style="width: 280px; box-sizing: border-box; padding: 9px 12px; border-radius: 7px; border: 1.5px solid #0052D9; background: #FFFFFF; font-size: 13px; font-family: 'Inter', sans-serif;">
+      <a href="AddAccount.dc.html"><button style="padding: 9px 16px; border-radius: 7px; border: none; background: #0052D9; color: #FFFFFF; font-size: 13px; font-weight: 500;">+ 新增账号</button></a>
+    </div>
+
+    <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;">
+        <div style="width: 48px; height: 48px; border-radius: 999px; border: 1.5px solid #E5E6EB; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 16px; height: 16px; border: 2px solid #86909C; border-radius: 999px; position: relative;">
+            <div style="position: absolute; width: 8px; height: 2px; background: #86909C; right: -8px; bottom: -2px; transform: rotate(45deg);"></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="font-size: 14px; color: #1D2129;">没有匹配"抖音"的账号</div>
+          <div style="font-size: 12px; color: #86909C;">检查一下平台/应用名有没有拼错，或者这本来就是个新账号</div>
+        </div>
+        <a href="AddAccount.dc.html">
+          <button style="padding: 8px 16px; border-radius: 7px; border: 1px solid #D4D6DB; background: #FFFFFF; color: #1D2129; font-size: 13px; font-family: 'Inter', sans-serif;">直接新增"抖音"账号</button>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

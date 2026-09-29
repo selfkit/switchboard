@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "session-webviews",
+  "description": "账号页面是盖在主窗口上的子 webview，里面跑的是外部平台的登录页。只开注入脚本要回传的那两条命令，见 permissions/session-report.toml；report_picked_selectors 自己还会校验该页面确实处在指认模式。",
+  "windows": ["main"],
+  "webviews": ["acct-*"],
+  "remote": {
+    "urls": ["http://*/*", "https://*/*", "http://*:*/*", "https://*:*/*"]
+  },
+  "permissions": ["allow-session-report"]
+}

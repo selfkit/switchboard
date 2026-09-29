@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <title>Switchboard</title>
+    <style>
+      body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", sans-serif; background: #F2F3F5; color: #1D2129; }
+      a { text-decoration: none; }
+      button { cursor: pointer; font: inherit; }
+      input, select, textarea { font: inherit; }
+      /*
+        WKWebView 里默认是那种粗的、直接压在内容上的滚动条。统一换成细的、
+        不滚就看不见的样式：styled 之后 WebKit 按经典滚动条排版，会自己让出 8px，
+        不会再盖住右边的按钮和文字。
+      */
+      * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.16) transparent; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.16); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

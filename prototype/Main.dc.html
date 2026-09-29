@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    button { cursor: pointer; font-family: 'Inter', sans-serif; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; background: #FFFFFF;">
+
+  <!-- 左侧导航 -->
+  <div style="width: 224px; flex-shrink: 0; box-sizing: border-box; padding: 28px 20px; background: #F2F3F5; display: flex; flex-direction: column; gap: 28px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #0052D9;"></div>
+      <span style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">Switchboard</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div style="font-size: 11px; color: #86909C; padding: 0 8px 6px;">归属</div>
+      <div style="padding: 9px 10px; border-radius: 7px; background: #FFFFFF; font-size: 13px; color: #1D2129; display: flex; justify-content: space-between;"><span>全部账号</span><span style="color: #86909C;">12</span></div>
+      <div style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969; display: flex; justify-content: space-between;"><span>公司账号</span><span style="color: #86909C;">8</span></div>
+      <div style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969; display: flex; justify-content: space-between;"><span>个人账号</span><span style="color: #86909C;">4</span></div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <div style="font-size: 11px; color: #86909C; padding: 0 8px 6px;">平台</div>
+      <div style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969; display: flex; justify-content: space-between;"><span>阿里云</span><span style="color: #86909C;">4</span></div>
+      <div style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969; display: flex; justify-content: space-between;"><span>腾讯云</span><span style="color: #86909C;">3</span></div>
+      <div style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969; display: flex; justify-content: space-between;"><span>即构</span><span style="color: #86909C;">2</span></div>
+      <div style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969; display: flex; justify-content: space-between;"><span>微信小程序</span><span style="color: #86909C;">3</span></div>
+    </div>
+
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 4px;">
+      <a href="Settings.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969;">设置</a>
+      <a href="PlatformConfig.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969;">平台适配配置</a>
+      <a href="SessionExpired.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 12px; color: #86909C;">场景演示：会话过期</a>
+      <a href="Empty.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 12px; color: #86909C;">场景演示：空状态</a>
+      <a href="FieldCandidates.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 12px; color: #86909C;">场景演示：字段候选/新建</a>
+      <a href="EmbeddedLoginFill.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 12px; color: #86909C;">业务流程：阿里云-无会话自动填充</a>
+      <a href="EmbeddedSessionValid.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 12px; color: #86909C;">业务流程：阿里云-会话有效直接进入</a>
+      <a href="SearchEmpty.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 12px; color: #86909C;">场景演示：搜索无结果</a>
+    </div>
+  </div>
+
+  <!-- 右侧主区域 -->
+  <div style="flex-grow: 1; display: flex; flex-direction: column; min-width: 0;">
+
+    <!-- 顶部栏 -->
+    <div style="height: 72px; flex-shrink: 0; box-sizing: border-box; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E5E6EB;">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <input placeholder="搜索应用名 / 备注..." style="width: 280px; box-sizing: border-box; padding: 9px 12px; border-radius: 7px; border: 1px solid #E5E6EB; background: #F2F3F5; font-size: 13px; font-family: 'Inter', sans-serif;">
+        <a href="ActiveSessions.dc.html"><div style="padding: 9px 14px; border-radius: 7px; background: rgba(0,82,217,0.08); color: #0052D9; font-size: 12px; font-weight: 500;">3 个窗口在线</div></a>
+      </div>
+      <a href="AddAccount.dc.html"><button style="padding: 9px 16px; border-radius: 7px; border: none; background: #0052D9; color: #FFFFFF; font-size: 13px; font-weight: 500;">+ 新增账号</button></a>
+    </div>
+
+    <!-- 账号卡片网格 -->
+    <div style="flex-grow: 1; overflow: hidden; padding: 24px 32px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-content: start;">
+      <sc-for list="{{accounts}}" as="acc" hint-placeholder-count="6">
+        <div style="border: 1px solid #E5E6EB; border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #FFFFFF;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; padding: 3px 8px; border-radius: 999px; background: rgba(0,82,217,0.08); color: #0052D9;">{{acc.platform}}</span>
+            <span style="font-size: 11px; color: #86909C;">{{acc.ownerType}}</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div style="font-size: 14px; color: #1D2129; font-weight: 500;">{{acc.app}}</div>
+            <div style="font-size: 12px; color: #4E5969;">{{acc.username}} · {{acc.role}}</div>
+          </div>
+          <div style="font-size: 12px; color: #86909C; min-height: 16px;">{{acc.remark}}</div>
+          <div style="display: flex; gap: 8px; margin-top: 2px;">
+            <a href="LaunchFeedback.dc.html"><button style="padding: 7px 12px; border-radius: 6px; border: none; background: #0052D9; color: #FFFFFF; font-size: 12px; font-weight: 500;">一键登录</button></a>
+            <sc-if value="{{acc.hasTotp}}" hint-placeholder-val="{{true}}">
+              <a href="TotpCode.dc.html"><button style="padding: 7px 12px; border-radius: 6px; border: 1px solid #E5E6EB; background: #FFFFFF; color: #1D2129; font-size: 12px;">验证码</button></a>
+            </sc-if>
+            <a href="AddAccount.dc.html"><button style="padding: 7px 12px; border-radius: 6px; border: 1px solid #E5E6EB; background: #FFFFFF; color: #4E5969; font-size: 12px;">编辑</button></a>
+            <a href="DeleteConfirm.dc.html"><button style="padding: 7px 12px; border-radius: 6px; border: 1px solid #E5E6EB; background: #FFFFFF; color: #E34D59; font-size: 12px;">删除</button></a>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const accounts = [
+      { platform: "阿里云", ownerType: "公司账号", app: "直播App - 推流服务", username: "svc-live@company", role: "RAM子账号", remark: "找财务-张三要短信验证码", hasTotp: false },
+      { platform: "阿里云", ownerType: "个人账号", app: "小程序 - 个人项目", username: "tan@personal", role: "主账号", remark: "已绑定 TOTP", hasTotp: true },
+      { platform: "腾讯云", ownerType: "公司账号", app: "内容审核服务", username: "svc-moderate@company", role: "服务号", remark: "", hasTotp: true },
+      { platform: "腾讯云", ownerType: "公司账号", app: "主账号", username: "admin@company", role: "主账号", remark: "资金相关，谨慎操作", hasTotp: true },
+      { platform: "即构", ownerType: "公司账号", app: "直播App - 音视频", username: "zego-live@company", role: "服务号", remark: "", hasTotp: false },
+      { platform: "微信小程序", ownerType: "个人账号", app: "小程序 - App B", username: "tan-mp@personal", role: "主账号", remark: "找本人手机收验证码", hasTotp: false }
+    ];
+    return { accounts };
+  }
+}
+</script>
+</body>
+</html>

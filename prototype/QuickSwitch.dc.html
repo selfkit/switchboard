@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; position: relative; background: #FFFFFF;">
+
+  <!-- 背景：当前正在阿里云账号1操作，淡化显示 -->
+  <div style="display: flex; height: 100%; opacity: 0.35;">
+    <div style="width: 64px; flex-shrink: 0; background: #1D2129;"></div>
+    <div style="flex-grow: 1; background: #F2F3F5;"></div>
+  </div>
+
+  <!-- 快捷切换：类 Cmd+K 面板 -->
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: flex-start; justify-content: center; padding-top: 140px;">
+    <div style="width: 520px; background: #FFFFFF; border-radius: 14px; box-shadow: 0 20px 48px rgba(29,33,41,0.14); overflow: hidden;">
+
+      <div style="padding: 16px 20px; border-bottom: 1px solid #E5E6EB; display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 15px; color: #86909C;">⌘K</span>
+        <input placeholder="输入平台名 / 应用名快速跳转" style="flex-grow: 1; border: none; outline: none; font-size: 15px; font-family: 'Inter', sans-serif; color: #1D2129;">
+      </div>
+
+      <div style="padding: 8px; max-height: 420px; overflow: hidden; display: flex; flex-direction: column; gap: 2px;">
+
+        <div style="font-size: 11px; color: #86909C; padding: 8px 12px 4px;">当前已在线 · 直接切换</div>
+
+        <a href="EmbeddedSessionValid.dc.html">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(0,82,217,0.08);">
+            <div style="width: 6px; height: 6px; border-radius: 999px; background: #0052D9; flex-shrink: 0;"></div>
+            <span style="font-size: 11px; padding: 2px 7px; border-radius: 999px; background: #FFFFFF; color: #0052D9;">阿里云</span>
+            <span style="font-size: 13px; color: #1D2129; flex-grow: 1;">直播App - 推流服务（账号1）</span>
+            <span style="font-size: 11px; color: #0052D9;">当前</span>
+          </div>
+        </a>
+
+        <a href="AliyunAccount2.dc.html">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;">
+            <div style="width: 6px; height: 6px; border-radius: 999px; background: #0052D9; flex-shrink: 0;"></div>
+            <span style="font-size: 11px; padding: 2px 7px; border-radius: 999px; background: #F2F3F5; color: #0052D9;">阿里云</span>
+            <span style="font-size: 13px; color: #1D2129; flex-grow: 1;">小程序 - 个人项目（账号2）</span>
+            <span style="font-size: 11px; color: #86909C;">Enter 切换</span>
+          </div>
+        </a>
+
+        <a href="TencentSwitch.dc.html">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;">
+            <div style="width: 6px; height: 6px; border-radius: 999px; background: #0052D9; flex-shrink: 0;"></div>
+            <span style="font-size: 11px; padding: 2px 7px; border-radius: 999px; background: #F2F3F5; color: #0052D9;">腾讯云</span>
+            <span style="font-size: 13px; color: #1D2129; flex-grow: 1;">主账号</span>
+            <span style="font-size: 11px; color: #86909C;">Enter 切换</span>
+          </div>
+        </a>
+
+        <div style="font-size: 11px; color: #86909C; padding: 10px 12px 4px; border-top: 1px solid #E5E6EB; margin-top: 4px;">还没打开 · 切换即拉起新窗口</div>
+
+        <a href="EmbeddedLoginFill.dc.html">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px;">
+            <div style="width: 6px; height: 6px; border-radius: 999px; background: #D4D6DB; flex-shrink: 0;"></div>
+            <span style="font-size: 11px; padding: 2px 7px; border-radius: 999px; background: #F2F3F5; color: #4E5969;">即构</span>
+            <span style="font-size: 13px; color: #1D2129; flex-grow: 1;">直播App - 音视频</span>
+            <span style="font-size: 11px; color: #86909C;">Enter 打开</span>
+          </div>
+        </a>
+      </div>
+
+      <div style="padding: 10px 20px; border-top: 1px solid #E5E6EB; display: flex; gap: 16px; font-size: 11px; color: #86909C;">
+        <span>↑↓ 选择</span>
+        <span>Enter 切换</span>
+        <span>Esc 取消</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

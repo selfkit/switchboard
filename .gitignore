@@ -1,0 +1,13 @@
+/.idea/
+/prototype/.restyle.py
+/prototype/.restyle_light.py
+.DS_Store
+node_modules/
+dist/
+/src-tauri/target/
+/src-tauri/gen/
+*.key
+*.key.pub
+# 账号库和导出的备份：只在 ~/Library/Application Support/com.switchboard.app/ 里，谁也别往仓库塞
+*.db
+*.db.replaced-*

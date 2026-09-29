@@ -1,0 +1,13 @@
+"$schema" = "schemas/schema.json"
+
+# 账号页面（acct-* 那些子 webview）里跑的是外部平台的登录页，默认一条命令都调不了。
+# 这里只开注入脚本要回传的那三条，别的一律不开：
+#   report_picked_selectors —— 指认输入框的结果；命令自己还会校验该 webview 确实处在指认模式
+#   report_page_state       —— 页面自报"这页能不能用"（wry 没有导航失败回调，只能让页面自己说）
+#   touch_activity           —— 自动锁定用的活动心跳；只改一个时间戳，不读不写任何账号数据，
+#                               就算外部页面恶意狂调也只是让自动锁定多等一会儿，不构成新的暴露面
+# 三条都只往 App 里送 App 自己要的东西，不读任何库里的数据。
+[[permission]]
+identifier = "allow-session-report"
+description = "允许账号登录页回传指认到的选择器、页面加载结果和活动心跳"
+commands.allow = ["report_picked_selectors", "report_page_state", "touch_activity"]

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; background: #FFFFFF;">
+
+  <!-- 左侧账号快切栏：常驻，显示当前在线的隔离窗口 -->
+  <div style="width: 64px; flex-shrink: 0; background: #1D2129; display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 14px;">
+    <div style="width: 22px; height: 22px; border-radius: 6px; background: #0052D9; margin-bottom: 6px;"></div>
+
+    <a href="EmbeddedSessionValid.dc.html">
+      <div title="阿里云 账号1" style="width: 34px; height: 34px; border-radius: 9px; background: #2B3038; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #86909C;">阿1</div>
+    </a>
+    <div title="阿里云 账号2 · 当前" style="width: 34px; height: 34px; border-radius: 9px; background: #0052D9; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #FFFFFF; box-shadow: 0 0 0 2px #1D2129, 0 0 0 3px #0052D9;">阿2</div>
+    <a href="TencentSwitch.dc.html">
+      <div title="腾讯云 主账号" style="width: 34px; height: 34px; border-radius: 9px; background: #2B3038; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #86909C;">腾</div>
+    </a>
+
+    <a href="QuickSwitch.dc.html">
+      <div style="width: 34px; height: 34px; border-radius: 9px; border: 1px dashed #4E5460; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #8A9099; margin-top: 4px;">+</div>
+    </a>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column;">
+    <div style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 12px; background: #F2F3F5; border-bottom: 1px solid #E5E6EB;">
+      <div style="flex-grow: 1; padding: 6px 12px; border-radius: 6px; background: #FFFFFF; font-size: 12px; color: #4E5969; font-family: 'JetBrains Mono', ui-monospace, monospace;">miniapp.console.aliyun.com/overview · 小程序 - 个人项目（账号2）</div>
+      <div style="font-size: 11px; padding: 4px 8px; border-radius: 999px; background: rgba(0,82,217,0.08); color: #0052D9;">会话有效</div>
+    </div>
+
+    <div style="flex-grow: 1; padding: 32px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="font-size: 12px; color: #86909C;">已通过快捷切换进入这个账号，账号1 的窗口仍在后台保持登录</div>
+
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+        <div style="border: 1px solid #E5E6EB; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 12px; color: #86909C;">小程序日活</div>
+          <div style="font-size: 22px; color: #1D2129; font-family: 'Inter', sans-serif;">2,140</div>
+        </div>
+        <div style="border: 1px solid #E5E6EB; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 12px; color: #86909C;">今日新增</div>
+          <div style="font-size: 22px; color: #1D2129; font-family: 'Inter', sans-serif;">86</div>
+        </div>
+        <div style="border: 1px solid #E5E6EB; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 12px; color: #86909C;">告警</div>
+          <div style="font-size: 22px; color: #1D2129; font-family: 'Inter', sans-serif;">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 0 24px; display: flex; align-items: center; justify-content: flex-end; border-top: 1px solid #E5E6EB;">
+      <a href="Main.dc.html"><button style="padding: 9px 16px; border-radius: 7px; border: 1px solid #D4D6DB; background: #FFFFFF; color: #4E5969; font-size: 13px; font-family: 'Inter', sans-serif;">返回账号列表</button></a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

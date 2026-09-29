@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; background: #FFFFFF;">
+
+  <!-- 左侧导航（与设置页一致） -->
+  <div style="width: 224px; flex-shrink: 0; box-sizing: border-box; padding: 28px 20px; background: #F2F3F5; display: flex; flex-direction: column; gap: 28px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #0052D9;"></div>
+      <span style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">Switchboard</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <a href="Main.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969;">账号列表</a>
+      <a href="Settings.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969;">设置</a>
+      <div style="padding: 9px 10px; border-radius: 7px; background: #FFFFFF; font-size: 13px; color: #1D2129;">平台适配配置</div>
+    </div>
+  </div>
+
+  <!-- 右侧内容 -->
+  <div style="flex-grow: 1; padding: 40px 48px; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+    <div>
+      <h1 style="margin: 0; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 24px; color: #1D2129;">平台适配配置</h1>
+      <div style="font-size: 12px; color: #4E5969; margin-top: 6px;">每个平台登录页要找的输入框，存成独立配置，平台改版了改这里就行，不用重新编译发版</div>
+    </div>
+
+    <!-- 平台配置表 -->
+    <div style="border: 1px solid #E5E6EB; border-radius: 12px; overflow: hidden;">
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 0.8fr; padding: 12px 16px; background: #F2F3F5; font-size: 11px; color: #86909C;">
+        <div>平台</div>
+        <div>账号输入框选择器</div>
+        <div>密码输入框选择器</div>
+        <div>触发事件</div>
+        <div>状态</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 0.8fr; padding: 14px 16px; align-items: center; border-top: 1px solid #E5E6EB;">
+        <div style="font-size: 13px; color: #1D2129;">阿里云 · RAM登录</div>
+        <div style="font-size: 12px; color: #4E5969; font-family: 'JetBrains Mono', ui-monospace, monospace;">#username</div>
+        <div style="font-size: 12px; color: #4E5969; font-family: 'JetBrains Mono', ui-monospace, monospace;">#password</div>
+        <div style="font-size: 12px; color: #4E5969;">input + change</div>
+        <div style="font-size: 11px; padding: 3px 8px; border-radius: 999px; background: rgba(0,82,217,0.08); color: #0052D9; justify-self: start;">已验证</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 0.8fr; padding: 14px 16px; align-items: center; border-top: 1px solid #E5E6EB;">
+        <div style="font-size: 13px; color: #1D2129;">腾讯云 · 子账号登录</div>
+        <div style="font-size: 12px; color: #4E5969; font-family: 'JetBrains Mono', ui-monospace, monospace;">input[name=uin]</div>
+        <div style="font-size: 12px; color: #4E5969; font-family: 'JetBrains Mono', ui-monospace, monospace;">input[name=pwd]</div>
+        <div style="font-size: 12px; color: #4E5969;">input</div>
+        <div style="font-size: 11px; padding: 3px 8px; border-radius: 999px; background: rgba(0,82,217,0.08); color: #0052D9; justify-self: start;">已验证</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 0.8fr; padding: 14px 16px; align-items: center; border-top: 1px solid #E5E6EB;">
+        <div style="font-size: 13px; color: #1D2129;">即构 · 控制台登录</div>
+        <div style="font-size: 12px; color: #86909C; font-family: 'JetBrains Mono', ui-monospace, monospace;">未配置</div>
+        <div style="font-size: 12px; color: #86909C; font-family: 'JetBrains Mono', ui-monospace, monospace;">未配置</div>
+        <div style="font-size: 12px; color: #86909C;">—</div>
+        <div style="font-size: 11px; padding: 3px 8px; border-radius: 999px; background: rgba(227,77,89,0.08); color: #E34D59; justify-self: start;">待配置</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr 1fr 0.8fr; padding: 14px 16px; align-items: center; border-top: 1px solid #E5E6EB;">
+        <div style="font-size: 13px; color: #1D2129;">微信小程序 · 扫码为主</div>
+        <div style="font-size: 12px; color: #86909C; font-family: 'JetBrains Mono', ui-monospace, monospace;">不适用</div>
+        <div style="font-size: 12px; color: #86909C; font-family: 'JetBrains Mono', ui-monospace, monospace;">不适用</div>
+        <div style="font-size: 12px; color: #86909C;">—</div>
+        <div style="font-size: 11px; padding: 3px 8px; border-radius: 999px; background: #F2F3F5; color: #4E5969; justify-self: start;">走扫码，跳过</div>
+      </div>
+    </div>
+
+    <div style="font-size: 12px; color: #86909C;">"未配置"的平台，点击"业务流程"里的"手动指认输入框"选完一次后，会自动写回到这张表里，下次直接生效</div>
+
+    <a href="EmbeddedRefill.dc.html" style="align-self: flex-start;">
+      <button style="padding: 9px 16px; border-radius: 7px; border: 1px solid #D4D6DB; background: #FFFFFF; color: #4E5969; font-size: 13px; font-family: 'Inter', sans-serif;">去"即构"手动指认一次输入框</button>
+    </a>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

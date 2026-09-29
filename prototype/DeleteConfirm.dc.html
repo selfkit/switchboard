@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; position: relative; background: #FFFFFF;">
+
+  <!-- 背景：主界面的一角，暗示这是叠在列表上方的弹层 -->
+  <div style="padding: 32px; opacity: 0.5;">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 24px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #0052D9;"></div>
+      <span style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">Switchboard</span>
+    </div>
+    <div style="width: 380px; border: 1px solid #E5E6EB; border-radius: 10px; padding: 16px;">
+      <span style="font-size: 11px; padding: 3px 8px; border-radius: 999px; background: rgba(0,82,217,0.08); color: #0052D9;">腾讯云</span>
+      <div style="font-size: 14px; color: #1D2129; font-weight: 500; margin-top: 8px;">主账号</div>
+    </div>
+  </div>
+
+  <!-- 弹层：正常文档流叠加，非 position:fixed -->
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center;">
+    <div style="width: 380px; background: #FFFFFF; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">删除这个账号？</div>
+        <div style="font-size: 13px; color: #4E5969; line-height: 1.6;">「腾讯云 · 主账号」将从账号库移除，加密记录会被清除</div>
+      </div>
+
+      <div style="background: #F2F3F5; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #4E5969; line-height: 1.6;">
+        对应的浏览器隔离 Profile 目录不会被自动删除，仍会保留在本机磁盘上，如需彻底清理请手动删除
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <a href="Main.dc.html"><button style="padding: 9px 16px; border-radius: 7px; border: 1px solid #D4D6DB; background: #FFFFFF; color: #4E5969; font-size: 13px; font-family: 'Inter', sans-serif;">取消</button></a>
+        <a href="Main.dc.html"><button style="padding: 9px 16px; border-radius: 7px; border: none; background: #E34D59; color: #FFFFFF; font-size: 13px; font-family: 'Inter', sans-serif; font-weight: 500;">确认删除</button></a>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; position: relative; background: #FFFFFF;">
+
+  <!-- 背景：设置页淡化 -->
+  <div style="padding: 32px 48px; opacity: 0.4;">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 24px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #0052D9;"></div>
+      <span style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">Switchboard</span>
+    </div>
+    <div style="width: 560px; border: 1px solid #E5E6EB; border-radius: 12px; padding: 20px;">
+      <div style="font-family: 'Inter', sans-serif; font-size: 16px; color: #1D2129;">备份与导出</div>
+    </div>
+  </div>
+
+  <!-- 弹层 -->
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center;">
+    <div style="width: 420px; background: #FFFFFF; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 16px; align-items: center; text-align: center;">
+
+      <div style="width: 44px; height: 44px; border-radius: 999px; background: rgba(0,82,217,0.08); display: flex; align-items: center; justify-content: center;">
+        <div style="width: 16px; height: 9px; border-left: 2px solid #0052D9; border-bottom: 2px solid #0052D9; transform: rotate(-45deg) translateY(-2px);"></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-family: 'Inter', sans-serif; font-size: 17px; color: #1D2129;">备份已导出</div>
+        <div style="font-size: 13px; color: #4E5969;">12 条账号记录，已用主密码加密</div>
+      </div>
+
+      <div style="width: 100%; background: #F2F3F5; border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #1D2129; font-family: 'JetBrains Mono', ui-monospace, monospace; text-align: left;">
+        ~/Downloads/switchboard-backup-2026-09-17.enc
+      </div>
+
+      <div style="width: 100%; background: rgba(227,77,89,0.08); border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #E34D59; text-align: left; line-height: 1.6;">
+        这份备份文件只能用当前的主密码解密。改了主密码之后，记得重新导出一份新的
+      </div>
+
+      <a href="Settings.dc.html" style="width: 100%;">
+        <button style="width: 100%; box-sizing: border-box; padding: 11px 14px; border-radius: 8px; border: none; background: #0052D9; color: #FFFFFF; font-size: 14px; font-family: 'Inter', sans-serif; font-weight: 500;">完成</button>
+      </a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

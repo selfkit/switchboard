@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+    label { font-size: 12px; color: #4E5969; }
+    input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 7px; border: 1px solid #D4D6DB; background: #FFFFFF; font-size: 14px; font-family: 'Inter', sans-serif; color: #1D2129; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; background: #FFFFFF;">
+
+  <!-- 左侧导航 -->
+  <div style="width: 224px; flex-shrink: 0; box-sizing: border-box; padding: 28px 20px; background: #F2F3F5; display: flex; flex-direction: column; gap: 28px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #0052D9;"></div>
+      <span style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">Switchboard</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px;">
+      <a href="Main.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969;">账号列表</a>
+      <div style="padding: 9px 10px; border-radius: 7px; background: #FFFFFF; font-size: 13px; color: #1D2129;">设置</div>
+      <a href="PlatformConfig.dc.html" style="padding: 9px 10px; border-radius: 7px; font-size: 13px; color: #4E5969;">平台适配配置</a>
+    </div>
+  </div>
+
+  <!-- 右侧设置内容 -->
+  <div style="flex-grow: 1; padding: 40px 48px; display: flex; flex-direction: column; gap: 28px; overflow: hidden;">
+    <h1 style="margin: 0; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 24px; color: #1D2129;">设置</h1>
+
+    <div style="max-width: 560px; display: flex; flex-direction: column; gap: 24px;">
+
+      <div style="border: 1px solid #E5E6EB; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="font-family: 'Inter', sans-serif; font-size: 16px; color: #1D2129;">浏览器路径</div>
+        <div style="font-size: 12px; color: #4E5969; line-height: 1.6; margin-top: -8px;">用于一键登录时拉起隔离窗口，未安装在默认路径需手动指定</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label>Chrome / Edge 可执行文件路径</label>
+          <input value="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome">
+        </div>
+      </div>
+
+      <div style="border: 1px solid #E5E6EB; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="font-family: 'Inter', sans-serif; font-size: 16px; color: #1D2129;">备份与导出</div>
+        <div style="font-size: 12px; color: #4E5969; line-height: 1.6; margin-top: -8px;">加密数据库仅保存在本机，建议定期导出备份文件</div>
+        <div style="display: flex; gap: 10px;">
+          <a href="BackupExport.dc.html"><button style="padding: 9px 16px; border-radius: 7px; border: none; background: #0052D9; color: #FFFFFF; font-size: 13px; font-family: 'Inter', sans-serif; font-weight: 500;">导出加密备份</button></a>
+          <button style="padding: 9px 16px; border-radius: 7px; border: 1px solid #D4D6DB; background: #FFFFFF; color: #4E5969; font-size: 13px; font-family: 'Inter', sans-serif;">从备份导入</button>
+        </div>
+      </div>
+
+      <div style="border: 1px solid #E5E6EB; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="font-family: 'Inter', sans-serif; font-size: 16px; color: #1D2129;">主密码</div>
+        <div style="font-size: 12px; color: #4E5969; line-height: 1.6; margin-top: -8px;">修改后需要用新密码重新加密整个账号库</div>
+        <button style="align-self: flex-start; padding: 9px 16px; border-radius: 7px; border: 1px solid #D4D6DB; background: #FFFFFF; color: #4E5969; font-size: 13px; font-family: 'Inter', sans-serif;">修改主密码</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

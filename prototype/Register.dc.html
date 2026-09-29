@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #F2F3F5; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; position: relative;">
+
+  <div style="position: absolute; top: 48px; left: 64px; display: flex; align-items: center; gap: 10px;">
+    <div style="width: 28px; height: 28px; border-radius: 8px; background: #0052D9;"></div>
+    <span style="font-family: 'Inter', sans-serif; font-size: 20px; color: #1D2129;">Switchboard</span>
+  </div>
+
+  <div style="width: 380px; display: flex; flex-direction: column; gap: 24px; align-items: center;">
+    <div style="display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center;">
+      <h1 style="margin: 0; font-family: 'Inter', sans-serif; font-weight: 500; font-size: 30px; color: #1D2129;">创建你的账号</h1>
+      <div style="font-size: 13px; color: #4E5969;">首次使用，先建立你自己在本机的登录身份</div>
+    </div>
+
+    <div style="width: 100%; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="u2" style="font-size: 12px; color: #4E5969;">用户名 / 邮箱</label>
+        <input id="u2" type="text" placeholder="tan@example.com" style="width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: 1px solid #D4D6DB; background: #FFFFFF; font-size: 15px; font-family: 'Inter', sans-serif; color: #1D2129;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="p2" style="font-size: 12px; color: #4E5969;">设置主密码</label>
+        <input id="p2" type="password" placeholder="至少 12 位，建议包含符号" style="width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: 1px solid #D4D6DB; background: #FFFFFF; font-size: 15px; font-family: 'Inter', sans-serif; color: #1D2129;">
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="p3" style="font-size: 12px; color: #4E5969;">确认主密码</label>
+        <input id="p3" type="password" placeholder="再次输入" style="width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: 1px solid #D4D6DB; background: #FFFFFF; font-size: 15px; font-family: 'Inter', sans-serif; color: #1D2129;">
+      </div>
+
+      <a href="Main.dc.html" style="width: 100%;">
+        <button style="width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: none; background: #0052D9; color: #FFFFFF; font-size: 15px; font-family: 'Inter', sans-serif; font-weight: 500;">创建账号并开始使用</button>
+      </a>
+    </div>
+
+    <div style="font-size: 13px; color: #4E5969;">已有账号？<a href="Unlock.dc.html" style="color: #0052D9; font-weight: 500;">去登录</a></div>
+    <div style="font-size: 12px; color: #86909C; text-align: center; line-height: 1.6;">主密码只保存在本机，忘记后无法找回<br>也无法解密已有账号库，请妥善保管</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

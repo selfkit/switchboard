@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>账号管理器 App 原型</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:#F2F3F5; color:#1D2129; }
+
+  /* 总览 */
+  #grid-view { padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .hint { margin:0 0 20px; color:#4E5969; font-size:13px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:20px; }
+  .card { background:#fff; border:1px solid #E5E6EB; border-radius:10px; overflow:hidden; cursor:pointer; }
+  .card:hover { border-color:#0052D9; }
+  .card .cap { padding:10px 12px; font-size:13px; border-bottom:1px solid #E5E6EB; }
+  .card .frame { height:262px; overflow:hidden; position:relative; }
+  .card iframe { width:1280px; height:800px; border:0; transform:scale(.328); transform-origin:0 0; pointer-events:none; }
+
+  /* 单页 */
+  #page-view { display:none; height:100vh; flex-direction:column; }
+  .bar { flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:10px 16px; background:#fff; border-bottom:1px solid #E5E6EB; }
+  .bar button { padding:6px 12px; border:1px solid #E5E6EB; background:#fff; border-radius:7px; font-size:13px; cursor:pointer; }
+  .bar button:hover:not(:disabled) { border-color:#0052D9; color:#0052D9; }
+  .bar button:disabled { opacity:.35; cursor:default; }
+  .bar .title { font-size:14px; font-weight:500; }
+  .bar .count { font-size:12px; color:#86909C; }
+  .bar .spacer { flex:1; }
+  .bar select { padding:6px 10px; border:1px solid #E5E6EB; border-radius:7px; font-size:13px; background:#fff; max-width:220px; }
+  .stage { flex:1; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:20px; }
+  .stage .box { width:1280px; height:800px; background:#fff; border:1px solid #E5E6EB; border-radius:10px; overflow:hidden; transform-origin:top center; }
+  .stage iframe { width:1280px; height:800px; border:0; display:block; }
+</style>
+</head>
+<body>
+
+<div id="grid-view">
+  <h1>账号管理器 App 原型</h1>
+  <p class="hint">点任意卡片进入单页，之后用 ← → 或顶部按钮左右切换，Esc 返回总览。</p>
+  <div class="grid" id="grid"></div>
+</div>
+
+<div id="page-view">
+  <div class="bar">
+    <button id="back">← 总览</button>
+    <button id="prev">←</button>
+    <button id="next">→</button>
+    <span class="title" id="title"></span>
+    <span class="count" id="count"></span>
+    <span class="spacer"></span>
+    <select id="jump"></select>
+  </div>
+  <div class="stage" id="stage"><div class="box"><iframe id="page"></iframe></div></div>
+</div>
+
+<script>
+const screens = [
+  ["Register.dc.html","注册主账号"],
+  ["Unlock.dc.html","登录"],
+  ["Main.dc.html","主界面 - 账号列表"],
+  ["AddAccount.dc.html","新增/编辑账号"],
+  ["LaunchFeedback.dc.html","一键登录反馈"],
+  ["TotpCode.dc.html","本地验证码"],
+  ["Empty.dc.html","空状态引导"],
+  ["DeleteConfirm.dc.html","删除账号确认"],
+  ["SessionExpired.dc.html","会话过期-手动验证"],
+  ["Settings.dc.html","设置页"],
+  ["FieldCandidates.dc.html","字段候选/新建交互"],
+  ["EmbeddedLoginFill.dc.html","业务流程-阿里云-无会话自动填充"],
+  ["EmbeddedRefill.dc.html","业务流程-手动指认输入框"],
+  ["EmbeddedSessionValid.dc.html","业务流程-会话有效直接进入（阿里云账号1）"],
+  ["PlatformConfig.dc.html","平台适配配置"],
+  ["ActiveSessions.dc.html","活跃会话总览"],
+  ["SearchEmpty.dc.html","搜索无结果"],
+  ["BackupExport.dc.html","备份导出确认"],
+  ["QuickSwitch.dc.html","快捷切换面板"],
+  ["AliyunAccount2.dc.html","切换后-阿里云账号2"],
+  ["TencentSwitch.dc.html","切换后-腾讯云主账号"]
+];
+
+const $ = id => document.getElementById(id);
+
+$('grid').innerHTML = screens.map(([f, t], i) =>
+  `<div class="card" data-i="${i}"><div class="cap">${t}</div>
+   <div class="frame"><iframe src="${f}" loading="lazy" tabindex="-1"></iframe></div></div>`
+).join('');
+$('grid').onclick = e => {
+  const card = e.target.closest('.card');
+  if (card) location.hash = screens[card.dataset.i][0];
+};
+
+$('jump').innerHTML = screens.map(([f, t]) => `<option value="${f}">${t}</option>`).join('');
+$('jump').onchange = e => { location.hash = e.target.value; };
+
+$('back').onclick = () => { location.hash = ''; };
+$('prev').onclick = () => go(-1);
+$('next').onclick = () => go(1);
+
+let cur = -1; // 当前页在 screens 中的下标，-1 = 总览
+
+function go(step) {
+  const i = cur + step;
+  if (i >= 0 && i < screens.length) location.hash = screens[i][0];
+}
+
+function show() {
+  const file = decodeURIComponent(location.hash.slice(1));
+  cur = screens.findIndex(s => s[0] === file);
+
+  if (cur < 0) {
+    $('grid-view').style.display = '';
+    $('page-view').style.display = 'none';
+    $('page').src = 'about:blank';
+    return;
+  }
+  $('grid-view').style.display = 'none';
+  $('page-view').style.display = 'flex';
+
+  const [f, t] = screens[cur];
+  if (!$('page').src.endsWith(f)) $('page').src = f;
+  $('title').textContent = t;
+  $('count').textContent = `${cur + 1} / ${screens.length}`;
+  $('jump').value = f;
+  $('prev').disabled = cur === 0;
+  $('next').disabled = cur === screens.length - 1;
+  fit();
+}
+
+// 原型里的链接会让 iframe 自己跳转，跳完把地址同步回 hash，左右切换才不会错位
+$('page').addEventListener('load', () => {
+  let f;
+  try {
+    f = $('page').contentWindow.location.pathname.split('/').pop();
+    $('page').contentDocument.addEventListener('keydown', onKey); // 焦点在 iframe 内也能左右切
+  } catch { return; }
+  if (f && f !== 'blank' && f !== screens[cur]?.[0]) location.hash = f;
+});
+
+// 窗口比 1280x800 小就整体缩放
+function fit() {
+  const stage = $('stage'), box = stage.firstElementChild;
+  const s = Math.min(1, (stage.clientWidth - 40) / 1280);
+  box.style.transform = `scale(${s})`;
+  box.style.marginBottom = `${(s - 1) * 800}px`;
+}
+
+function onKey(e) {
+  if (cur < 0 || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowLeft') go(-1);
+  else if (e.key === 'ArrowRight') go(1);
+  else if (e.key === 'Escape') location.hash = '';
+}
+
+addEventListener('hashchange', show);
+addEventListener('resize', fit);
+addEventListener('keydown', onKey);
+show();
+</script>
+</body>
+</html>

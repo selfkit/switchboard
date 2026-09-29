@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "updater",
+  "description": "主窗口检查/下载/安装更新。更新包必须通过 tauri.conf.json 里那把公钥验签才会被装上，光有下载链接不够。",
+  "windows": ["main"],
+  "permissions": ["updater:default", "process:allow-restart"]
+}

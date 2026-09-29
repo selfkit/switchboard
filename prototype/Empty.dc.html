@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; background: #FFFFFF;">
+
+  <!-- 左侧导航（与主界面一致，保持结构感知） -->
+  <div style="width: 224px; flex-shrink: 0; box-sizing: border-box; padding: 28px 20px; background: #F2F3F5; display: flex; flex-direction: column; gap: 28px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 4px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #0052D9;"></div>
+      <span style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">Switchboard</span>
+    </div>
+    <div style="font-size: 13px; color: #86909C; padding: 0 8px;">还没有账号数据</div>
+  </div>
+
+  <!-- 右侧空状态 -->
+  <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
+    <div style="width: 380px; display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center;">
+
+      <div style="width: 64px; height: 64px; border-radius: 16px; border: 1px solid #E5E6EB; display: flex; align-items: center; justify-content: center;">
+        <div style="width: 22px; height: 22px; border: 2px solid #0052D9; border-radius: 5px; position: relative;">
+          <div style="position: absolute; left: 8px; top: 3px; width: 2px; height: 12px; background: #0052D9;"></div>
+          <div style="position: absolute; left: 3px; top: 8px; width: 12px; height: 2px; background: #0052D9;"></div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="font-family: 'Inter', sans-serif; font-size: 20px; color: #1D2129;">账号库还是空的</div>
+        <div style="font-size: 13px; color: #4E5969; line-height: 1.6;">把阿里云、腾讯云、即构这些散落的账号登记进来<br>每条记录会自动获得独立的隔离登录环境</div>
+      </div>
+
+      <a href="AddAccount.dc.html">
+        <button style="padding: 10px 20px; border-radius: 8px; border: none; background: #0052D9; color: #FFFFFF; font-size: 14px; font-family: 'Inter', sans-serif; font-weight: 500;">+ 添加第一个账号</button>
+      </a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

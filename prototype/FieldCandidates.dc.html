@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #F2F3F5; }
+    a { text-decoration: none; }
+    label { font-size: 12px; color: #4E5969; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; justify-content: center; align-items: flex-start; padding-top: 56px;">
+  <div style="width: 640px; display: flex; flex-direction: column; gap: 20px;">
+
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 24px; height: 24px; border-radius: 7px; background: #0052D9;"></div>
+      <span style="font-family: 'Inter', sans-serif; font-size: 18px; color: #1D2129;">Switchboard</span>
+    </div>
+    <div style="font-family: 'Inter', sans-serif; font-size: 20px; color: #1D2129;">新增账号 — 候选 / 新建交互</div>
+    <div style="font-size: 12px; color: #4E5969; margin-top: -12px;">已经存过的值直接选，没有的直接输入即新建，不需要额外的"新建"按钮</div>
+
+    <div style="background: #FFFFFF; border: 1px solid #E5E6EB; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 22px;">
+
+      <!-- 平台：候选列表已打开 -->
+      <div style="display: flex; flex-direction: column; gap: 6px; position: relative;">
+        <label>平台</label>
+        <div style="padding: 10px 12px; border-radius: 7px; border: 1.5px solid #0052D9; background: #FFFFFF; font-size: 14px; color: #1D2129;">阿里云</div>
+        <div style="position: absolute; top: 54px; left: 0; width: 100%; background: #FFFFFF; border: 1px solid #E5E6EB; border-radius: 8px; box-shadow: 0 8px 24px rgba(29,33,41,0.10); z-index: 2;">
+          <div style="padding: 10px 12px; font-size: 13px; color: #1D2129; background: rgba(0,82,217,0.08);">阿里云</div>
+          <div style="padding: 10px 12px; font-size: 13px; color: #1D2129;">腾讯云</div>
+          <div style="padding: 10px 12px; font-size: 13px; color: #1D2129;">即构</div>
+          <div style="padding: 10px 12px; font-size: 13px; color: #1D2129; border-top: 1px solid #E5E6EB;">微信小程序</div>
+        </div>
+      </div>
+
+      <!-- 归属：候选 + 新建 -->
+      <div style="display: flex; flex-direction: column; gap: 6px; position: relative; margin-top: 44px;">
+        <label>归属</label>
+        <div style="padding: 10px 12px; border-radius: 7px; border: 1.5px solid #0052D9; background: #FFFFFF; font-size: 14px; color: #1D2129;">团队 - 增</div>
+        <div style="position: absolute; top: 54px; left: 0; width: 100%; background: #FFFFFF; border: 1px solid #E5E6EB; border-radius: 8px; box-shadow: 0 8px 24px rgba(29,33,41,0.10); z-index: 1;">
+          <div style="padding: 10px 12px; font-size: 13px; color: #1D2129;">公司账号</div>
+          <div style="padding: 10px 12px; font-size: 13px; color: #1D2129;">个人账号</div>
+          <div style="padding: 10px 12px; font-size: 13px; color: #0052D9; border-top: 1px solid #E5E6EB;">+ 新建"团队 - 增"</div>
+        </div>
+      </div>
+
+      <!-- 登录直达URL：以历史值作为候选，允许自由输入新值 -->
+      <div style="display: flex; flex-direction: column; gap: 6px; position: relative; margin-top: 44px;">
+        <label>登录直达 URL</label>
+        <div style="padding: 10px 12px; border-radius: 7px; border: 1.5px solid #0052D9; background: #FFFFFF; font-size: 14px; color: #1D2129;">https://ram.console.aliyun.com/</div>
+        <div style="position: absolute; top: 54px; left: 0; width: 100%; background: #FFFFFF; border: 1px solid #E5E6EB; border-radius: 8px; box-shadow: 0 8px 24px rgba(29,33,41,0.10); z-index: 1;">
+          <div style="padding: 8px 12px; font-size: 11px; color: #86909C;">同平台历史使用过的直达地址</div>
+          <div style="padding: 10px 12px; font-size: 13px; color: #1D2129; font-family: 'JetBrains Mono', ui-monospace, monospace;">https://ram.console.aliyun.com/</div>
+          <div style="padding: 10px 12px; font-size: 13px; color: #1D2129; font-family: 'JetBrains Mono', ui-monospace, monospace; border-top: 1px solid #E5E6EB;">https://cdn.console.aliyun.com/</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="font-size: 12px; color: #86909C;">三个字段用同一套组件：输入即过滤候选，选中即填入，没匹配到就当作新值直接保存</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

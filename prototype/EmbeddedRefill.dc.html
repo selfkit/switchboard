@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: #FFFFFF; }
+    a { text-decoration: none; }
+  </style>
+</helmet>
+
+<div style="width: 1280px; height: 800px; box-sizing: border-box; display: flex; background: #FFFFFF;">
+
+  <div style="width: 64px; flex-shrink: 0; background: #1D2129; display: flex; flex-direction: column; align-items: center; padding: 20px 0;">
+    <div style="width: 22px; height: 22px; border-radius: 6px; background: #0052D9;"></div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column;">
+
+    <div style="height: 48px; flex-shrink: 0; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 12px; background: #F2F3F5; border-bottom: 1px solid #E5E6EB;">
+      <div style="flex-grow: 1; padding: 6px 12px; border-radius: 6px; background: #FFFFFF; font-size: 12px; color: #4E5969; font-family: 'JetBrains Mono', ui-monospace, monospace;">ram.console.aliyun.com/login</div>
+      <div style="font-size: 11px; padding: 4px 8px; border-radius: 999px; background: rgba(0,82,217,0.08); color: #0052D9;">选择模式</div>
+    </div>
+
+    <div style="flex-grow: 1; position: relative; background: #F2F3F5; display: flex; align-items: center; justify-content: center;">
+      <div style="width: 360px; background: #FFFFFF; border: 1px solid #E5E6EB; border-radius: 10px; padding: 28px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="font-size: 15px; color: #1D2129; font-weight: 500;">阿里云 RAM 用户登录</div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px; position: relative;">
+          <label style="font-size: 12px; color: #4E5969;">企业别名</label>
+          <input placeholder="不是账号，跳过" style="width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 6px; border: 1.5px dashed #D4D6DB; font-size: 13px;">
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px; position: relative;">
+          <label style="font-size: 12px; color: #4E5969;">账号</label>
+          <input placeholder="账号" style="width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 6px; border: 2px dashed #0052D9; font-size: 13px;">
+          <div style="position: absolute; right: -14px; top: 24px; width: 22px; height: 22px; border-radius: 999px; background: #0052D9; color: #FFFFFF; font-size: 12px; display: flex; align-items: center; justify-content: center;">1</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px; position: relative;">
+          <label style="font-size: 12px; color: #4E5969;">密码</label>
+          <input type="password" placeholder="密码" style="width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 6px; border: 2px dashed #0052D9; font-size: 13px;">
+          <div style="position: absolute; right: -14px; top: 24px; width: 22px; height: 22px; border-radius: 999px; background: #0052D9; color: #FFFFFF; font-size: 12px; display: flex; align-items: center; justify-content: center;">2</div>
+        </div>
+
+        <button style="padding: 10px; border-radius: 7px; border: 1px dashed #D4D6DB; background: #FFFFFF; color: #86909C; font-size: 13px;">登录</button>
+      </div>
+
+      <div style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 420px; background: #1D2129; color: #FFFFFF; padding: 12px 18px; border-radius: 10px; font-size: 12px; line-height: 1.6; text-align: center;">
+        点击"账号"框标为 1，点击"密码"框标为 2 —— 记住这次选择，下次自动带入这两个框
+      </div>
+    </div>
+
+    <div style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 24px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; border-top: 1px solid #E5E6EB;">
+      <a href="EmbeddedLoginFill.dc.html"><button style="padding: 9px 16px; border-radius: 7px; border: 1px solid #D4D6DB; background: #FFFFFF; color: #4E5969; font-size: 13px; font-family: 'Inter', sans-serif;">取消</button></a>
+      <a href="EmbeddedSessionValid.dc.html"><button style="padding: 9px 16px; border-radius: 7px; border: none; background: #0052D9; color: #FFFFFF; font-size: 13px; font-family: 'Inter', sans-serif; font-weight: 500;">记住并带入登录</button></a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

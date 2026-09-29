@@ -1,0 +1,75 @@
+"$schema" = "schemas/schema.json"
+
+# 一旦这个目录里出现任何一条 app 权限，Tauri 就对**所有** App 自己的命令开启 ACL 校验
+# （tauri 2.11 webview/mod.rs：`has_app_acl_manifest || !is_local` → acl.is_none() 就拒）。
+# 也就是说 session-report.toml 一建，主窗口这几十条命令全得在这里显式列出来，
+# 否则解锁、列账号、开会话全部被拒。加新命令时**必须**同步加到这张表。
+#
+# 这条权限只给 capabilities/default.json（windows: ["main"]，且没有 remote → 仅本地页面）。
+# 账号登录页是外部 http(s) 源，origin 对不上 Local，所以拿不到这张表里的任何一条。
+[[permission]]
+identifier = "allow-main-window"
+description = "主窗口自己的界面调用 App 的全部命令"
+commands.allow = [
+  "is_initialized",
+  "register",
+  "unlock",
+  "current_owner",
+  "lock",
+  "get_auto_lock_secs",
+  "set_auto_lock_secs",
+  "touch_activity",
+  "idle_secs",
+  "change_master_password",
+  "verify_master_password",
+  "reset_hint",
+  "wipe_vault",
+  "list_accounts",
+  "get_account",
+  "save_account",
+  "delete_account",
+  "switch_or_open_account",
+  "check_region",
+  "patrol_region",
+  "cut_sessions",
+  "recheck_and_restore",
+  "set_region_mode",
+  "set_region_watch_secs",
+  "set_region_endpoints",
+  "reset_region_endpoints",
+  "list_active_sessions",
+  "close_session",
+  "clear_login",
+  "reload_session",
+  "set_sessions_visible",
+  "select_session_tab",
+  "tab_history",
+  "find_in_page",
+  "open_url_in_session",
+  "open_in_system_browser",
+  "reveal_download",
+  "get_download_settings",
+  "set_download_settings",
+  "move_download",
+  "write_clipboard",
+  "clear_clipboard_later",
+  "enter_demo",
+  "set_demo_tour",
+  "start_recording",
+  "stop_recording",
+  "close_session_tab",
+  "active_session",
+  "fill_focused",
+  "pin_current_url",
+  "list_platform_configs",
+  "export_platform_configs",
+  "import_platform_configs",
+  "save_platform_config",
+  "delete_platform_config",
+  "set_pick_mode",
+  "totp_code",
+  "totp_secret_from",
+  "totp_preview",
+  "export_backup",
+  "import_backup",
+]
