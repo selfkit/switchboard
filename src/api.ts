@@ -28,7 +28,8 @@ export type Account = {
  */
 export const DEFAULT_PLATFORMS = ["阿里云", "腾讯云", "即构", "微信小程序", "云账户", "开发者平台", "亚马逊", "七牛云", "对象存储", "服务器", "其他"];
 const GENERIC_OWNERS = ["公司账号", "个人账号"];
-export const DEFAULT_OWNERS = [...GENERIC_OWNERS, "sano", "爱呗", "相亲相爱", "知伴缘", "后台管理"];
+// "sano", "爱呗", "相亲相爱", "知伴缘",
+export const DEFAULT_OWNERS = [...GENERIC_OWNERS,  "后台管理"];
 export const DEFAULT_ROLES = ["子账号", "主账号", "RAM子账号", "服务号"];
 
 const uniq = (xs: string[]) => [...new Set(xs.filter((x) => x.trim() !== ""))];
