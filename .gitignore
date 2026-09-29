@@ -11,3 +11,5 @@ dist/
 # 账号库和导出的备份：只在 ~/Library/Application Support/com.switchboard.app/ 里，谁也别往仓库塞
 *.db
 *.db.replaced-*
+# 截 README 截图时的临时预览页（前端 + 假后端），用完就删，别进仓库
+/__shot/
