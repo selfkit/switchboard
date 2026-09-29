@@ -524,6 +524,15 @@ fn site_of(host: &str) -> String {
     parts[n.saturating_sub(take)..].join(".")
 }
 
+/// 手动填密码的站点校验：同一个域名（按 `site_of` 算，子域名算一个）或同一个 IP 就放行，协议和端口不管。
+/// 比 `fill_allowed` 松：这是用户自己点的，同一台机器上换了个端口的服务（宝塔面板和它上面的站）也该能填
+fn same_host(login: &tauri::Url, page: &tauri::Url) -> bool {
+    match (login.domain(), page.domain()) {
+        (Some(a), Some(b)) if a.contains('.') => site_of(a) == site_of(b),
+        _ => login.host_str().is_some() && login.host_str() == page.host_str(),
+    }
+}
+
 /// 自动填充只在跟登录直达 URL **同一个站**的页面上跑。
 ///
 /// 填充脚本里是明文密码，而同一个页签是会跳走的（控制台里点了个站外链接、SSO 跳转）。
@@ -1244,7 +1253,7 @@ fn ensure_usable(app: &AppHandle, account_id: &str) -> Result<(), String> {
 /// 把一个值填进用户最后点过的那个输入框——不依赖任何选择器的兜底手段。
 /// `login` 给了就先核站点：密码这类值只往账号登录地址所在的站填。
 /// 页签是会跳走的（点了个链接、在账号里开了别的地址），用户以为还在登录页，一点「填密码」就填给了别人。
-/// 跟自动填充同一条规则（`fill_allowed`）
+/// 只认域名 / IP，见 `same_host`
 pub fn fill_focused(app: &AppHandle, account_id: &str, value: &str, what: &str, login: Option<&str>) -> Result<(), String> {
     ensure_usable(app, account_id)?;
     if let Some(login) = login {
@@ -1258,9 +1267,9 @@ pub fn fill_focused(app: &AppHandle, account_id: &str, value: &str, what: &str, 
         let (Ok(l), Ok(p)) = (login.trim().parse::<tauri::Url>(), page.parse::<tauri::Url>()) else {
             return Err(format!("认不出当前页面在哪个站，{what}先不填"));
         };
-        if !fill_allowed(&l, &p) {
+        if !same_host(&l, &p) {
             return Err(format!(
-                "当前页面在 {}，不是这个账号登录地址所在的站（{}），{what}不往别的站填。确实要在这里登录，先点「设为直达页」",
+                "当前页面在 {}，跟这个账号登录地址的域名 / IP（{}）对不上，{what}不往别的站填。确实要在这里登录，先点「设为直达页」",
                 p.host_str().unwrap_or("?"),
                 l.host_str().unwrap_or("?"),
             ));
@@ -1716,6 +1725,19 @@ mod tests {
         assert!(!ok("http://1.2.3.4:8888/login", "http://1.2.3.4:9000/"), "同一台机器上别的服务也不行");
         assert!(!ok("http://localhost:8080/", "http://localhost:9090/"));
         assert!(!ok("https://signin.aliyun.com/", "https://1.2.3.4/"));
+    }
+
+    #[test]
+    fn manual_fill_only_checks_domain_or_ip() {
+        let ok = |a: &str, b: &str| same_host(&a.parse().unwrap(), &b.parse().unwrap());
+        assert!(ok("https://signin.aliyun.com/", "https://account.aliyun.com/x"), "同一个域名的子域名");
+        assert!(ok("https://signin.aliyun.com/", "http://signin.aliyun.com/"), "协议不管");
+        assert!(ok("http://203.0.113.10:8888/login", "http://203.0.113.10:9000/"), "同一个 IP 换端口也行");
+        assert!(ok("http://localhost:8080/", "http://localhost:9090/"));
+        assert!(!ok("https://signin.aliyun.com/", "https://evil.com/"));
+        assert!(!ok("https://a.example.com.cn/", "https://other.com.cn/"), "com.cn 不能当成一个域名");
+        assert!(!ok("http://203.0.113.10/", "http://203.0.113.11/"));
+        assert!(!ok("https://signin.aliyun.com/", "https://203.0.113.10/"));
     }
 
     #[test]
