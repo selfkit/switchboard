@@ -4,12 +4,18 @@
 
 ## 功能特点
 
+> 下面的截图全部是演示模式的假数据。
+
 ### 同一个厂商的多个账号，同时在线
 
 以前：公司的阿里云、个人的阿里云、测试环境的 RAM 子账号……要么开好几个浏览器 / 无痕窗口 / 浏览器用户，要么登了这个退那个。
 
 现在：**每个账号一个完全隔离的登录环境**（独立的 cookie、LocalStorage、缓存），同一个厂商开十个账号也互不串号。
 全部嵌在一个窗口里，左边点哪个账号右边就是哪个，⌘K 搜名字秒切换，不用在一堆浏览器窗口里找。
+
+![会话页：多个账号同时在线，左边切账号，右边是真实页面，页面自己开的新窗口变成页签](docs/images/sessions.png)
+
+![⌘K 快捷切换：在线的直接切，没打开的回车就拉起](docs/images/quick-switch.png)
 
 ### 账号分类与查找
 
@@ -18,6 +24,8 @@
 - 平台、归属、角色、登录地址填过一次就进下拉候选，同类账号「复制新建」改两个字段就行
 - 除了账号密码，还能加任意**附加字段**（企业主体、AppID、密钥……），可标记为敏感
 - 「截图模糊」一键把列表打码，给别人看界面不漏信息
+
+![账号列表：按归属、平台分组筛选](docs/images/accounts.png)
 
 ### 一键登录
 
@@ -43,13 +51,15 @@
 
 存了 TOTP 密钥的账号直接出 6 位动态码，不用掏手机。密钥可以粘贴 `otpauth://` 链接、选二维码图片，或者（macOS）直接截图二维码再粘贴。
 
+![本地动态验证码](docs/images/totp.png)
+
 ### 安全
 
 - 整个账号库用**主密码**经 SQLCipher 加密，没有后门，主密码不出本机
 - 复制明文（密码、验证码、整条账号）要再验一次主密码，**30 秒后自动清空剪贴板**
 - 空闲自动锁定（时长可调）；锁定时顺手抹掉 WebKit 留在磁盘上的登录数据
 - 自动填充只在登录站、页面打开后 2 分钟内生效，不会填到别的站或「修改密码」框里
-- **网络区域检测**：检测到境外出口 / 代理 / VPN 时拦下，或直接切断已打开的页面，网络恢复后自动接回（见 [NETWORK-GUARD.md](NETWORK-GUARD.md)）
+- **网络区域检测**：检测到境外出口 / 代理 / VPN 时拦下，或直接切断已打开的页面，网络恢复后自动接回（见 [NETWORK-GUARD.md](docs/NETWORK-GUARD.md)）
 - 加密备份导出 / 导入，换机器不丢数据
 
 ### 其他
@@ -60,11 +70,11 @@
 
 ## 目录
 
-- [RELEASE.md](RELEASE.md) —— 发版手册：打包、发布到 Gitee、在线更新、常见报错，以及 Windows 版怎么出包、和 macOS 有哪些区别
-- [NETWORK-GUARD.md](NETWORK-GUARD.md) —— 网络区域检测：为什么要有、怎么判、实测数据
-- [ENCRYPTION.md](ENCRYPTION.md) —— 加密与数据安全：账号库怎么加密、解锁 / 锁定 / 备份 / 恢复时各发生什么、挡得住什么挡不住什么、改代码的红线
-- [prototype-design.md](prototype-design.md) —— 设计与架构：原型屏幕清单、流程，以及 Tauri + 内嵌 WebView 的技术架构
-- [prototype/](prototype/) —— 21 个可交互的静态原型页面（`.dc.html`）
+- [RELEASE.md](docs/RELEASE.md) —— 发版手册：打包、发布到 Gitee、在线更新、常见报错，以及 Windows 版怎么出包、和 macOS 有哪些区别
+- [NETWORK-GUARD.md](docs/NETWORK-GUARD.md) —— 网络区域检测：为什么要有、怎么判、实测数据
+- [ENCRYPTION.md](docs/ENCRYPTION.md) —— 加密与数据安全：账号库怎么加密、解锁 / 锁定 / 备份 / 恢复时各发生什么、挡得住什么挡不住什么、改代码的红线
+- [prototype-design.md](docs/prototype-design.md) —— 设计与架构：原型屏幕清单、流程，以及 Tauri + 内嵌 WebView 的技术架构
+- [prototype/](docs/prototype/) —— 21 个可交互的静态原型页面（`.dc.html`）
 - `src/` —— 前端（React + Vite + TS）
   - `App.tsx` 只做路由；`screens/Layout.tsx` 放全局顶栏、左侧导航等共用壳；`ui.tsx` 是配色和几个基础组件
 - `src-tauri/src/` —— Rust 后端
@@ -97,8 +107,8 @@ pnpm tauri dev
 - [x] 本地 TOTP、加密备份导出/导入、平台适配配置界面
 - [x] 会话 cookie 快照：退出时抄一份进加密库，下次打开塞回去，免得每次重登
 - [x] 在线适配：新平台不用重新打包，按提示词让 AI 生成 JSON 导入即可（设置页右上角 `?`）
-- [x] 网络区域检测：非中国大陆出口时拦截打开（港澳台同样按境外处理），见 [NETWORK-GUARD.md](NETWORK-GUARD.md)
-- [ ] Windows 版：代码已按 WebView2 适配，安装包在 Mac 上交叉编译（见 RELEASE.md「Windows 版」），还没在真机上完整跑过
+- [x] 网络区域检测：非中国大陆出口时拦截打开（港澳台同样按境外处理），见 [NETWORK-GUARD.md](docs/NETWORK-GUARD.md)
+- [ ] Windows 版：代码已按 WebView2 适配，安装包在 Mac 上交叉编译（见 [RELEASE.md「Windows 版」](docs/RELEASE.md)），还没在真机上完整跑过
 - [ ] 未做：多设备同步、移动端、选择器失效主动告警
 
 ## 开发版与正式版
@@ -140,7 +150,7 @@ pnpm tauri dev
 不抹的话锁不锁库都能被捡走。锁上之后磁盘上只剩加密库里的 cookie 快照，下次打开由它接回登录态。
 代价：把登录凭证放在 LocalStorage 里的站，锁一次要重新登一次。⌘Q 退出不走锁定，登录数据留到下次锁定时抹。
 删除账号、清空账号库时同样会抹掉对应的登录数据。
-完整的加密与数据安全设计见 [ENCRYPTION.md](ENCRYPTION.md)。
+完整的加密与数据安全设计见 [ENCRYPTION.md](docs/ENCRYPTION.md)。
 
 ## 发布
 
@@ -150,8 +160,8 @@ python3 scripts/release.py
 
 交互式菜单，会问你要做什么（发布 / 只构建 / 直接上传 / 改版本号），不用记参数。
 macOS 和 Windows 两个平台的包都在 Mac 上打，发布时默认两个一起发，也可以只发其中一个。
-两台机器各要装什么见 [RELEASE.md「打包环境」](RELEASE.md#打包环境)。
-令牌、签名密钥、版本号规则、在线更新原理、常见报错 —— 全在 **[RELEASE.md](RELEASE.md)**。
+两台机器各要装什么见 [RELEASE.md「打包环境」](docs/RELEASE.md#打包环境)。
+令牌、签名密钥、版本号规则、在线更新原理、常见报错 —— 全在 **[docs/RELEASE.md](docs/RELEASE.md)**。
 
 ## 几个容易踩的点
 
@@ -180,10 +190,10 @@ Windows 上给的是一条 PowerShell 命令（作用一样，在 `%APPDATA%\com
 ## 本地预览原型
 
 ```bash
-cd prototype && python3 -m http.server 8777
+cd docs/prototype && python3 -m http.server 8777
 ```
 
-打开 <http://localhost:8777/> ，即 [prototype/index.html](prototype/index.html)：
+打开 <http://localhost:8777/> ，即 [docs/prototype/index.html](docs/prototype/index.html)：
 
 - 总览：所有页面的缩略图，点卡片进入单页
 - 单页：`←` `→` 键或顶部按钮左右切换，右上下拉框直接跳转，`Esc` 回总览
@@ -204,4 +214,4 @@ cd prototype && python3 -m http.server 8777
 
 ## 说明
 
-`.dc.html` 是设计工具导出的格式，用 `{{表达式}}`、`<sc-for>`、`<sc-if>` 做数据绑定。[prototype/support.js](prototype/support.js) 是为本地预览补的极简运行时（约 60 行），仅供看原型用。
+`.dc.html` 是设计工具导出的格式，用 `{{表达式}}`、`<sc-for>`、`<sc-if>` 做数据绑定。[docs/prototype/support.js](docs/prototype/support.js) 是为本地预览补的极简运行时（约 60 行），仅供看原型用。

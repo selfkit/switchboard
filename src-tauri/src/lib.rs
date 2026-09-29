@@ -259,7 +259,7 @@ struct UnlockOutcome {
     mode: String,
 }
 
-/// `force` 是区域检测的逃生口，跟打开账号页那个"仍要继续"一样（NETWORK-GUARD.md：两种模式都要给）。
+/// `force` 是区域检测的逃生口，跟打开账号页那个"仍要继续"一样（docs/NETWORK-GUARD.md：两种模式都要给）。
 /// 没有它会形成死结：误判（比如公司专线出口在境外）时解不开库，而检测模式就存在库里，
 /// 想改成"仅提示"或"关闭"得先解锁——最后只剩敲终端命令清库这一条路。
 /// 放行的只是本地读库；之后打开每个账号页照样过检测，运行中的页面照样受哨兵管。
@@ -1147,7 +1147,7 @@ fn tab_history(app: AppHandle, account_id: String, delta: i32) -> Result<(), Str
 /// 在系统浏览器里打开一个地址（页签里打不开、要用插件/扫码的场合）。
 ///
 /// **必须过区域检测**：系统浏览器完全不受我们控制，出口不合规时一键跳出去，
-/// 等于给区域拦截开了个后门（见 NETWORK-GUARD.md）。所以这里跟"打开账号页"同一道闸。
+/// 等于给区域拦截开了个后门（见 docs/NETWORK-GUARD.md）。所以这里跟"打开账号页"同一道闸。
 #[tauri::command]
 async fn open_in_system_browser(
     app: AppHandle,
@@ -1358,7 +1358,7 @@ async fn open_url_in_session(app: AppHandle, account_id: String, url: String) ->
     session::open_url(&app, &account_id, &url)
 }
 
-/// 切到某个页签。页签是 `target=_blank` / `window.open` 开出来的，见 BROWSER-COMPAT.md。
+/// 切到某个页签。页签是 `target=_blank` / `window.open` 开出来的，见 docs/BROWSER-COMPAT.md。
 #[tauri::command]
 fn select_session_tab(app: AppHandle, account_id: String, index: usize) -> Result<(), String> {
     session::select_tab(&app, &account_id, index)
@@ -1395,21 +1395,22 @@ fn fill_focused(
     field: String,
 ) -> Result<String, String> {
     let account = with_conn(&vault, |c| db::get_account(c, &account_id))?;
-    let (value, what) = match field.as_str() {
-        "username" => (account.username.clone(), "账号".to_string()),
-        "password" => (account.credential.clone(), "密码".to_string()),
-        "totp" => (totp::generate(&account.totp_secret)?.code, "验证码".to_string()),
+    // secret = 只往登录站填（见 session::fill_focused）
+    let (value, what, secret) = match field.as_str() {
+        "username" => (account.username.clone(), "账号".to_string(), false),
+        "password" => (account.credential.clone(), "密码".to_string(), true),
+        "totp" => (totp::generate(&account.totp_secret)?.code, "验证码".to_string(), true),
         other if other.starts_with("extra:") => {
             let index = other[6..].parse::<usize>().map_err(|_| "附加字段编号无效".to_string())?;
             let extra = account.extra_fields.get(index).ok_or("附加字段不存在")?;
-            (extra.value.clone(), extra.label.clone())
+            (extra.value.clone(), extra.label.clone(), extra.secret)
         }
         other => return Err(format!("不认识的字段：{other}")),
     };
     if value.is_empty() {
         return Err(format!("这个账号没填{what}"));
     }
-    session::fill_focused(&app, &account_id, &value, &what)?;
+    session::fill_focused(&app, &account_id, &value, &what, secret.then_some(account.login_url.as_str()))?;
     Ok(value)
 }
 

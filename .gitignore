@@ -1,6 +1,6 @@
 /.idea/
-/prototype/.restyle.py
-/prototype/.restyle_light.py
+/docs/prototype/.restyle.py
+/docs/prototype/.restyle_light.py
 .DS_Store
 node_modules/
 dist/

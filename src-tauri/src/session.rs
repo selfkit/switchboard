@@ -76,7 +76,7 @@ pub struct Tab {
     pub shown: bool,
     /// 是否正处在"手动指认输入框"模式，只有这时才接受页面回传的选择器
     pub picking: bool,
-    /// 这个页签是不是一个**独立窗口**（`window.open` 带尺寸的真弹窗，见 BROWSER-COMPAT.md）。
+    /// 这个页签是不是一个**独立窗口**（`window.open` 带尺寸的真弹窗，见 docs/BROWSER-COMPAT.md）。
     /// 独立窗口不参与主窗口那块区域的摆放和显示隐藏，但**照样登记在这里**——
     /// 区域拦截靠这张表逐个切断，漏登记就等于开了个切不断的窗口。
     pub external: bool,
@@ -603,7 +603,7 @@ fn build_tab(
         // target=_blank / window.open：wry 不设这个钩子的话 WKWebView 直接把请求丢掉，
         // 表现就是"点了毫无反应"。我们拒掉原生那条路（它会开一个逃出 Sessions 管理、
         // 区域拦截切不断的独立窗口），改成在同一账号下自己开一个页签。
-        // 详见 BROWSER-COMPAT.md 的选型表。
+        // 详见 docs/BROWSER-COMPAT.md 的选型表。
         .on_new_window(move |url, features| {
             // 带尺寸的才是真弹窗（OAuth 那种 window.open(w,h)，页面还攥着返回的句柄
             // 等 postMessage 回来）。这种必须让 WKWebView 自己接管新 webview，
@@ -1242,8 +1242,30 @@ fn ensure_usable(app: &AppHandle, account_id: &str) -> Result<(), String> {
 }
 
 /// 把一个值填进用户最后点过的那个输入框——不依赖任何选择器的兜底手段。
-pub fn fill_focused(app: &AppHandle, account_id: &str, value: &str, what: &str) -> Result<(), String> {
+/// `login` 给了就先核站点：密码这类值只往账号登录地址所在的站填。
+/// 页签是会跳走的（点了个链接、在账号里开了别的地址），用户以为还在登录页，一点「填密码」就填给了别人。
+/// 跟自动填充同一条规则（`fill_allowed`）
+pub fn fill_focused(app: &AppHandle, account_id: &str, value: &str, what: &str, login: Option<&str>) -> Result<(), String> {
     ensure_usable(app, account_id)?;
+    if let Some(login) = login {
+        let page = {
+            let sessions = app.state::<Sessions>();
+            let map = sessions.map.lock().map_err(|e| e.to_string())?;
+            let t = map.get(account_id).ok_or("这个账号的页面没开着")?.active();
+            let page = t.last_url.lock().map(|u| u.clone()).unwrap_or_default();
+            page
+        };
+        let (Ok(l), Ok(p)) = (login.trim().parse::<tauri::Url>(), page.parse::<tauri::Url>()) else {
+            return Err(format!("认不出当前页面在哪个站，{what}先不填"));
+        };
+        if !fill_allowed(&l, &p) {
+            return Err(format!(
+                "当前页面在 {}，不是这个账号登录地址所在的站（{}），{what}不往别的站填。确实要在这里登录，先点「设为直达页」",
+                p.host_str().unwrap_or("?"),
+                l.host_str().unwrap_or("?"),
+            ));
+        }
+    }
     webview_of(app, account_id)?
         .eval(&adapter::fill_focused_js(value, what))
         .map_err(|e| e.to_string())

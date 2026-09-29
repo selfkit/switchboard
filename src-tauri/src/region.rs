@@ -1,4 +1,4 @@
-//! 网络区域检测。完整设计见仓库根目录的 NETWORK-GUARD.md。
+//! 网络区域检测。完整设计见 docs/NETWORK-GUARD.md。
 //!
 //! 一句话：打开账号页面前，判断**阿里云会看到的出口**在不在中国大陆。
 //!
@@ -310,7 +310,7 @@ mod tests {
         matches!(o, Origin::Outside { .. })
     }
 
-    /// 这组数据全部来自真实探测（见 NETWORK-GUARD.md §2），不是编的。
+    /// 这组数据全部来自真实探测（见 docs/NETWORK-GUARD.md §2），不是编的。
     /// 港澳台那三条是整个功能最容易写错的地方：它们的 country 都是"中国"。
     #[test]
     fn hong_kong_macao_taiwan_are_not_mainland() {

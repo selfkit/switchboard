@@ -15,6 +15,11 @@ pub fn open(path: &Path, password: &str) -> Result<Connection, String> {
 /// 验证密码并读取加密库，但不做任何建表或默认配置写入。
 /// 解锁流程先用它读取区域设置，通过网络检查后再调用 `prepare`。
 pub fn open_for_unlock(path: &Path, password: &str) -> Result<Connection, String> {
+    // 空 key 在 SQLCipher 里等于"不加密"：一份明文 SQLite 拿空密码就能"验证通过"。
+    // 导入备份时它会整份顶替当前库，之后新存的账号全是明文。解锁、导入、复制前核验都走这里，挡一处就够
+    if password.is_empty() {
+        return Err("主密码不能为空".into());
+    }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     }
@@ -378,6 +383,17 @@ mod tests {
             remark: "".into(),
             extra_fields: vec![ExtraField { label: "应用 ID".into(), value: "app-123".into(), secret: false }],
         }
+    }
+
+    /// 一份明文 SQLite 冒充备份：空密码不能让它"验证通过"
+    #[test]
+    fn plaintext_db_cannot_pass_as_a_vault() {
+        let path = std::env::temp_dir().join(format!("sb-plain-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        Connection::open(&path).unwrap().execute_batch("CREATE TABLE accounts (id TEXT)").unwrap();
+        assert!(open_for_unlock(&path, "").is_err(), "空密码打开了明文库");
+        assert!(open_for_unlock(&path, "anything").is_err());
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

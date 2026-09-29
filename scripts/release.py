@@ -9,7 +9,7 @@
 发布 / 只构建 / 复用产物直接上传 / 改版本号。不用记命令行参数。
 
 macOS 和 Windows 两个平台的包都在这台 Mac 上打：Windows 的是用 MinGW 交叉编译出来的
-（环境怎么装见 RELEASE.md「打包环境」）。发布时默认两个平台都传，进同一个发行版、写进同一份
+（环境怎么装见 docs/RELEASE.md「打包环境」）。发布时默认两个平台都传，进同一个发行版、写进同一份
 latest.json；也可以选只发其中一个。
 
 Gitee 令牌不用每次贴：环境变量 GITEE_TOKEN → ~/.switchboard-keys/gitee.token →
@@ -55,7 +55,7 @@ BUNDLE = ROOT / "src-tauri/target/universal-apple-darwin/release/bundle"
 WIN_TARGET = "x86_64-pc-windows-gnu"
 # 本机交叉编译出来的 Windows 安装包
 WIN_BUNDLE = ROOT / f"src-tauri/target/{WIN_TARGET}/release/bundle/nsis"
-# 在 Windows 电脑上手动打好的安装包拷到这里，发布时一样会被带上（见 RELEASE.md「Windows 版」）
+# 在 Windows 电脑上手动打好的安装包拷到这里，发布时一样会被带上（见 docs/RELEASE.md「Windows 版」）
 WIN_DROP = ROOT / "src-tauri/target/windows-nsis"
 
 
@@ -607,7 +607,7 @@ def main():
         if win:
             print(f"Windows ：{win[0].name}（{ago(win[0])}构建，含签名）")
         elif windows_tools_missing():
-            print("Windows ：这台 Mac 还没装交叉编译工具（装法见 RELEASE.md「打包环境」）")
+            print("Windows ：这台 Mac 还没装交叉编译工具（装法见 docs/RELEASE.md「打包环境」）")
         else:
             print(f"Windows ：还没有 {version} 的安装包")
         # 能不能直接上传，按平台分别算：产物在、而且是当前版本

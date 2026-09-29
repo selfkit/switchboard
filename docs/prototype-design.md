@@ -6,7 +6,7 @@
 
 ## 原型
 
-[点击查看可交互原型](https://claude.ai/artifact/9P8Ecod9YFG9rqis2pBkde)，或本地打开 [prototype/index.html](prototype/index.html)（见 [README](README.md#本地预览原型)）。
+[点击查看可交互原型](https://claude.ai/artifact/9P8Ecod9YFG9rqis2pBkde)，或本地打开 [prototype/index.html](prototype/index.html)（见 [README](../README.md#本地预览原型)）。
 
 > 这是一份可点击跳转的 HTML 原型（非最终 UI 代码，`prototype/` 目录下的 `.dc.html` 是原型编辑器的原始格式，仅供参考排版结构，不能直接拿去当产品代码用），用来对齐产品流程和界面结构，指导后续 Tauri + 前端页面的真实实现。
 

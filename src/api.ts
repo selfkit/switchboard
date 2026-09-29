@@ -130,7 +130,7 @@ export const listAccounts = () => invoke<Account[]>("list_accounts");
 export const saveAccount = (account: Account) => invoke<void>("save_account", { account });
 export const deleteAccount = (id: string) => invoke<void>("delete_account", { id });
 
-// 网络区域检测（设计见 NETWORK-GUARD.md）
+// 网络区域检测（设计见 docs/NETWORK-GUARD.md）
 export type RegionOrigin =
   | { kind: "mainland" }
   | { kind: "outside"; country: string; region: string }
@@ -208,7 +208,7 @@ export const closeSession = (accountId: string) => invoke<void>("close_session",
 /** 重新加载页面。加载失败后的「刷新」用它 */
 export const reloadSession = (accountId: string) => invoke<void>("reload_session", { accountId });
 export const setPickMode = (accountId: string, on: boolean) => invoke<void>("set_pick_mode", { accountId, on });
-/** 切到某个页签（target=_blank / window.open 开出来的，见 BROWSER-COMPAT.md） */
+/** 切到某个页签（target=_blank / window.open 开出来的，见 docs/BROWSER-COMPAT.md） */
 export const selectSessionTab = (accountId: string, index: number) =>
   invoke<void>("select_session_tab", { accountId, index });
 /** 当前页签的前进(1)/后退(-1) */
