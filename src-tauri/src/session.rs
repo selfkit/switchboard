@@ -327,25 +327,6 @@ pub fn watch_main_window(app: &AppHandle) {
         place_traffic_lights(&win);
         follow_traffic_lights(&win);
     }
-    // DEBUG-TL 临时：只读不摆，看 AppKit 有没有把它们挪回去；中间拉一下窗口宽度试改大小
-    {
-        let w = win.clone();
-        std::thread::spawn(move || {
-            let log = |tag: &'static str| {
-                let w2 = w.clone();
-                let _ = w.run_on_main_thread(move || debug_log_lights(&w2, tag));
-            };
-            std::thread::sleep(std::time::Duration::from_secs(3));
-            log("after3s");
-            if let Ok(size) = w.inner_size() {
-                let _ = w.set_size(tauri::PhysicalSize::new(size.width + 2, size.height));
-                std::thread::sleep(std::time::Duration::from_millis(800));
-                let _ = w.set_size(size);
-                std::thread::sleep(std::time::Duration::from_millis(1500));
-                log("after-resize");
-            }
-        });
-    }
     #[cfg(target_os = "macos")]
     let lights = win.clone();
     win.on_window_event(move |e| {
@@ -443,26 +424,6 @@ fn put_traffic_lights(win: &Window) {
         // 上下居中是对称的，父视图翻不翻转（flipped）都一样
         let h = btn.frame().size.height;
         btn.setFrameOrigin(NSPoint::new(LEFT + i as f64 * gap, (TOPBAR_H - h) / 2.0));
-    }
-    debug_log_lights(win, "placed");
-}
-
-// DEBUG-TL 临时：把按钮在窗口里的实际位置写出来核对，核完删
-fn debug_log_lights(win: &Window, tag: &str) {
-    use objc2_app_kit::{NSWindow, NSWindowButton};
-    use std::io::Write;
-    let Ok(ptr) = win.ns_window() else { return };
-    let ns = unsafe { &*(ptr as *const NSWindow) };
-    let fh = ns.frame().size.height;
-    let mut out = format!("{tag} win_h={fh:.1} ");
-    for b in [NSWindowButton::CloseButton, NSWindowButton::MiniaturizeButton, NSWindowButton::ZoomButton] {
-        if let Some(btn) = ns.standardWindowButton(b) {
-            let r = btn.convertRect_toView(btn.bounds(), None);
-            out += &format!("[x={:.1} center_from_top={:.1}] ", r.origin.x, fh - (r.origin.y + r.size.height / 2.0));
-        }
-    }
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/sb-tl.log") {
-        let _ = writeln!(f, "{out}");
     }
 }
 
