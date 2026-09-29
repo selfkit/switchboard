@@ -10,6 +10,8 @@ import { RegionBadge } from "./RegionGuard";
 export const TOPBAR_H = 40;
 /** 顶栏下面那条页签条的高度，同样和 session.rs 的 TABS_H 对齐 */
 export const TABS_H = 34;
+/** 侧栏宽度，同样和 session.rs 的 SIDEBAR_W 对齐 */
+export const SIDEBAR_W = 224;
 
 /** 主界面的几个去处。账号列表页还要在这份导航上面插"归属/平台"筛选，所以只共用底部这段。 */
 export type Page = "main" | "sessions" | "settings" | "platforms";
@@ -18,8 +20,14 @@ export type Page = "main" | "sessions" | "settings" | "platforms";
  * 全局顶栏：整个 App 只有这一条，固定在最上面，品牌标钉在右上角。
  * 高度必须和 session.rs 的 TOPBAR_H 对上——账号页面那个原生 webview 正好从它下面开始铺。
  */
-export function AppShell({ children, demo, tour, onStopTour, region, checking, notice, onCheck, onDismiss }: {
+export function AppShell({ children, split, demo, tour, onStopTour, region, checking, notice, onCheck, onDismiss }: {
   children: ReactNode;
+  /**
+   * 下面是「侧栏 + 内容」的页面：顶栏跟着分成左灰右白两段，分隔线从窗口顶一直通到底（跟访达一个做法）。
+   * 不分的话顶栏是一整条灰，白色内容区在它下面露出一道硬边，分隔线也从半截开始——
+   * Windows 上原生标题栏再压一层，更显眼
+   */
+  split: boolean;
   demo: boolean;
   /** 一键自动演示的解说字幕，居中显示，录屏时就是视频里的字幕 */
   tour: { text: string; running: boolean } | null;
@@ -44,6 +52,10 @@ export function AppShell({ children, demo, tour, onStopTour, region, checking, n
           padding: "0 20px",
           boxSizing: "border-box",
           position: "relative",
+          // 分隔线那 1px 对齐 Sidebar 的 borderRight（宽 SIDEBAR_W、border-box，线在最右一像素）
+          background: split
+            ? `linear-gradient(to right, ${C.bg} ${SIDEBAR_W - 1}px, ${C.border} ${SIDEBAR_W - 1}px ${SIDEBAR_W}px, ${C.surface} ${SIDEBAR_W}px)`
+            : "transparent",
         }}
       >
         {/* 提醒演示的人自己：现在是假库。主密码写出来，复制明文、改设置时要输 */}
@@ -256,7 +268,7 @@ export function Sidebar({ children, footer }: { children?: ReactNode; footer?: R
   return (
     <div
       style={{
-        width: 224,
+        width: SIDEBAR_W,
         flexShrink: 0,
         boxSizing: "border-box",
         padding: "20px 16px 16px",

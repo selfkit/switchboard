@@ -569,7 +569,7 @@ export default function App() {
   };
 
   return (
-    <AppShell demo={unlocked && api.inDemo()} tour={tour} onStopTour={() => { tourStop.current = true; }} region={region} checking={checkingRegion} notice={regionNotice} onCheck={() => void checkNetwork()} onDismiss={() => setRegionNotice("")}>
+    <AppShell split={screen.name === "main" || screen.name === "sessions" || screen.name === "sub"} demo={unlocked && api.inDemo()} tour={tour} onStopTour={() => { tourStop.current = true; }} region={region} checking={checkingRegion} notice={regionNotice} onCheck={() => void checkNetwork()} onDismiss={() => setRegionNotice("")}>
       {page()}
       {overlays}
     </AppShell>

@@ -1563,7 +1563,7 @@ mod tests {
     #[test]
     fn frontend_layout_constants_match() {
         let ts = include_str!("../../src/screens/Layout.tsx");
-        for (name, value) in [("TOPBAR_H", TOPBAR_H), ("TABS_H", TABS_H)] {
+        for (name, value) in [("TOPBAR_H", TOPBAR_H), ("TABS_H", TABS_H), ("SIDEBAR_W", SIDEBAR_W)] {
             let want = format!("{name} = {}", value as i64);
             assert!(
                 ts.contains(&want),

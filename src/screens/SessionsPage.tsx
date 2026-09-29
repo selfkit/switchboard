@@ -461,7 +461,7 @@ export default function SessionsPage({
       下面画的东西才会露出来。不这么做的话，打不开的站就是一片白板，
       用户不知道是在转圈还是已经挂了。
     */}
-    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+    <div style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", background: C.surface }}>
       {/*
         页签条。高度是 Layout 的 TABS_H，和 session.rs 的 TABS_H 对齐——
         后端把账号 webview 正好铺在它下面，所以**无论有没有页签都占着这块地方**，
@@ -476,7 +476,8 @@ export default function SessionsPage({
           alignItems: "center",
           gap: 6,
           padding: "0 10px",
-          background: C.bg,
+          // 跟上面顶栏右半段同为白底，两条连成一个页头，不再上白下灰分两截
+          background: C.surface,
           borderBottom: `1px solid ${C.border}`,
           overflowX: "auto",
         }}
@@ -506,10 +507,9 @@ export default function SessionsPage({
                     maxWidth: 200,
                     padding: "4px 9px",
                     borderRadius: 6,
-                    // 选中态跟侧栏导航一个做法：白底 + 描边 + 轻阴影，不"忽然变白"
-                    background: on ? C.surface : "transparent",
+                    // 页签条是白底，选中的用浅灰底 + 描边标出来
+                    background: on ? C.bg : "transparent",
                     border: `1px solid ${on ? C.border : "transparent"}`,
-                    boxShadow: on ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
                     color: on ? C.text : C.sub,
                     fontSize: 11,
                     cursor: on ? "default" : "pointer",
