@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>Switchboard</title><link rel="stylesheet" href="/__shot/theme.css"></head>
+<body><div id="root"></div>
+<script>
+// 预览用：前端原样跑，后端换成演示数据。不进仓库
+const ROWS = [
+  [1,"阿里云","星河科技","官网 · 生产环境","主账号","admin@xinghe.example",true,"月底对账用这个"],
+  [2,"阿里云","星河科技","官网 · 测试环境","RAM子账号","qa@xinghe.example",false,""],
+  [3,"腾讯云","星河科技","小程序后端","子账号","dev@xinghe.example",true,""],
+  [4,"腾讯云","蓝鲸传媒","CDN 与对象存储","主账号","web@lanjing.example",false,""],
+  [5,"云账户","蓝鲸传媒","灵活用工结算","主账号","lanjing_finance",false,"打款前需复核"],
+  [6,"即构","星河科技","音视频通话 SDK","主账号","rtc@xinghe.example",false,""],
+  [7,"微信小程序","蓝鲸传媒","会员小程序","服务号","lanjing_mp",false,""],
+  [8,"阿里云","个人账号","个人博客","主账号","me@personal.example",true,""],
+];
+const SLUG = {"阿里云":"aliyun","腾讯云":"tencent","云账户":"yunzhanghu","即构":"zego","微信小程序":"wechat"};
+const id = (n) => `de300000-0000-4000-8000-${String(n).padStart(12,"0")}`;
+const full = (r) => ({ id:id(r[0]), platform:r[1], owner_type:r[2], related_app:r[3], account_role:r[4],
+  login_url:`http://127.0.0.1:52710/${SLUG[r[1]]}/login`, username:r[5], credential:"x", totp_secret:r[6]?"JBSW":"", backup_contact:"", remark:r[7], extra_fields:[] });
+const ACC = ROWS.map(full);
+const masked = (a) => ({...a, credential:"••••••", totp_secret:a.totp_secret&&"••••••"});
+const tab = (slug, name, page, title) => ({ title:`${name} · ${title}`, url:`http://127.0.0.1:52710/${slug}/${page}`, loaded:true, failed:false, external:false });
+const S = (n, tabs) => { const a = ACC[n-1]; return { account_id:a.id, window_label:"acct-"+n, platform:a.platform, related_app:a.related_app, opened_secs:600, loaded:true, failed:false, fail_reason:null, cut:false, tabs, active_tab:0 }; };
+const SESS = location.hash === "#sessions" ? [S(1,[tab("aliyun","阿里云","console","控制台"), tab("aliyun","阿里云","docs","文档中心")]), S(3,[tab("tencent","腾讯云","console","控制台")]), S(6,[tab("zego","即构","console","控制台")])] : [S(1,[tab("aliyun","阿里云","console","控制台")]), S(3,[tab("tencent","腾讯云","console","控制台")])];
+const R = { is_initialized:true, current_owner:"星河科技", unlock:{blocked:null,mode:"off"}, list_accounts:ACC.map(masked), list_active_sessions:SESS, active_session:SESS[0].account_id,
+  check_region:{mode:"block",verdict:{origin:{kind:"mainland",reason:"中国"},tunnel:false,proxy:false,ip:"203.0.113.79"},endpoints:[],cut:false,watchSecs:7200},
+  get_auto_lock_secs:1800, totp_code:{code:"482915",remaining:18}, idle_secs:0, touch_activity:false, "plugin:app|version":"0.1.1", get_download_settings:{dir:"/Users/demo/Downloads",custom:false,ask:false,demo:false}, list_platform_configs:[] };
+window.__TAURI_INTERNALS__ = { metadata:{currentWindow:{label:"main"},currentWebview:{windowLabel:"main",label:"main"}},
+  transformCallback:(cb)=>{const i=Math.floor(Math.random()*1e9); window["_"+i]=cb; return i;},
+  invoke: async (cmd, args) => cmd === "get_account" ? ACC.find(a => a.id === (args.id||args.accountId)) : cmd.startsWith("plugin:event") ? 1 : (cmd in R ? R[cmd] : null) };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+async function until(f, ms=6000){ const t=Date.now(); for(;;){ const v=f(); if(v) return v; if(Date.now()-t>ms) throw new Error("timeout"); await sleep(50);} }
+const all = (t, sel) => [...document.querySelectorAll(sel)].filter(e => e.textContent.trim() === t);
+const startsText = (t) => [...document.querySelectorAll("div,span,button")].reverse().find(e => e.textContent.trim().startsWith(t) && e.children.length <= 2);
+function type(el, v){ Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(el,v); el.dispatchEvent(new Event("input",{bubbles:true})); }
+(async () => {
+  const step = location.hash.slice(1) || "main";
+  const pwd = await until(() => document.querySelector('input[placeholder="输入主密码"]'));
+  if (step === "login") { await sleep(500); document.title = "READY"; return; }
+  type(pwd, "p"); pwd.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter", bubbles:true}));
+  await until(() => all("官网 · 生产环境", "span,div").length); await sleep(300);
+  if (step === "quick") window.dispatchEvent(new KeyboardEvent("keydown", {key:"k", metaKey:true, bubbles:true}));
+  if (step === "totp") (await until(() => all("验证码","button")[0])).click();
+  if (step === "settings") all("设置","div,span,button").pop().click();
+  if (step === "form") (await until(() => all("编辑","button")[0])).click();
+  if (step === "sessions") {
+    (await until(() => startsText("会话"))).click();
+    await until(() => all("更多操作 ▾","button").length);
+    const f = document.createElement("iframe");
+    f.src = "aliyun-console.html";
+    f.style.cssText = "position:fixed;left:224px;top:86px;width:calc(100vw - 224px);height:calc(100vh - 86px);border:0;background:#fff";
+    document.body.appendChild(f);
+  }
+  await sleep(800); document.title = "READY";
+})().catch(e => { document.title = "ERR " + e.message; });
+</script>
+<script type="module" src="/src/main.tsx"></script>
+</body></html>

@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
-import { Brand, C, HelpDot } from "../ui";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Brand, C, HelpDot, IS_MAC } from "../ui";
 import { DEMO_PASSWORD, type RegionState } from "../api";
 import { RegionBadge } from "./RegionGuard";
 
@@ -7,11 +8,25 @@ import { RegionBadge } from "./RegionGuard";
  * 顶栏高度。**必须和 session.rs 的 TOPBAR_H 一致** —— 账号页面那个原生 webview
  * 正好从它下面开始铺（session.rs 的 frontend_layout_constants_match 钉着这两个数）。
  */
-export const TOPBAR_H = 40;
+export const TOPBAR_H = 52;
 /** 顶栏下面那条页签条的高度，同样和 session.rs 的 TABS_H 对齐 */
 export const TABS_H = 34;
 /** 侧栏宽度，同样和 session.rs 的 SIDEBAR_W 对齐 */
 export const SIDEBAR_W = 224;
+
+/** 顶栏中间那块留给页面自己放东西（账号列表的搜索和按钮），见 `TopbarSlot` */
+const TOPBAR_SLOT_ID = "sb-topbar-slot";
+
+/**
+ * 把页面自己的工具栏放进顶栏，而不是在顶栏下面再起一行：两行叠着，上面那行只有右上角一个标，
+ * 大半截空着。用 portal 是为了状态（搜索词、模糊开关）还留在页面里，不用往 App 上提
+ */
+export function TopbarSlot({ children }: { children: ReactNode }) {
+  // 顶栏和页面同一次提交挂上去，页面第一次渲染时槽位还没进 DOM，所以挂载后再取
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  useEffect(() => setEl(document.getElementById(TOPBAR_SLOT_ID)), []);
+  return el ? createPortal(children, el) : null;
+}
 
 /** 主界面的几个去处。账号列表页还要在这份导航上面插"归属/平台"筛选，所以只共用底部这段。 */
 export type Page = "main" | "sessions" | "settings" | "platforms";
@@ -23,9 +38,9 @@ export type Page = "main" | "sessions" | "settings" | "platforms";
 export function AppShell({ children, split, demo, tour, onStopTour, region, checking, notice, onCheck, onDismiss }: {
   children: ReactNode;
   /**
-   * 下面是「侧栏 + 内容」的页面：顶栏跟着分成左灰右白两段，分隔线从窗口顶一直通到底（跟访达一个做法）。
-   * 不分的话顶栏是一整条灰，白色内容区在它下面露出一道硬边，分隔线也从半截开始——
-   * Windows 上原生标题栏再压一层，更显眼
+   * 下面是「侧栏 + 内容」的页面：侧栏和内容同一个底色，只靠一条细线分开，这条线从窗口顶通到底。
+   * 试过两种不行的：顶栏整条灰、内容白——内容区上沿一道硬边，分隔线从半截开始；
+   * 侧栏灰、内容白各占一列——两块色从上到下一刀切开，割裂感更重。Windows 的原生标题栏是白的，同底色也最不突兀
    */
   split: boolean;
   demo: boolean;
@@ -49,15 +64,25 @@ export function AppShell({ children, split, demo, tour, onStopTour, region, chec
           alignItems: "center",
           justifyContent: "flex-end",
           gap: 10,
-          padding: "0 20px",
+          // 侧栏页左边那列要跟下面的侧栏严丝合缝，不留内边距
+          padding: split ? "0 20px 0 0" : "0 20px",
           boxSizing: "border-box",
           position: "relative",
           // 分隔线那 1px 对齐 Sidebar 的 borderRight（宽 SIDEBAR_W、border-box，线在最右一像素）
           background: split
-            ? `linear-gradient(to right, ${C.bg} ${SIDEBAR_W - 1}px, ${C.border} ${SIDEBAR_W - 1}px ${SIDEBAR_W}px, ${C.surface} ${SIDEBAR_W}px)`
+            ? `linear-gradient(to right, ${C.surface} ${SIDEBAR_W - 1}px, ${C.border} ${SIDEBAR_W - 1}px ${SIDEBAR_W}px, ${C.surface} ${SIDEBAR_W}px)`
             : "transparent",
         }}
       >
+        {/* 侧栏那一列的顶上放品牌，像侧栏的标题；macOS 左上角有红绿灯，让开它 */}
+        {split && (
+          // marginRight 抵掉顶栏的 gap：槽位要正好从侧栏右边线开始，页面里的东西才跟下面的内容对齐
+          <div style={{ width: SIDEBAR_W, marginRight: -10, flexShrink: 0, alignSelf: "stretch", display: "flex", alignItems: "center", boxSizing: "border-box", paddingLeft: IS_MAC ? 84 : 16 }}>
+            <Brand size={14} />
+          </div>
+        )}
+        {/* 页面的工具栏放这里（TopbarSlot）。自动演示时字幕占顶栏正中，先把它藏起来免得叠在一起 */}
+        <div id={TOPBAR_SLOT_ID} style={{ flexGrow: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "center", visibility: tour ? "hidden" : "visible" }} />
         {/* 提醒演示的人自己：现在是假库。主密码写出来，复制明文、改设置时要输 */}
         {tour && (
           <div data-tauri-drag-region="false" style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 10, padding: "4px 14px", borderRadius: 999, background: C.brandSoft, color: C.brand, fontSize: 13, whiteSpace: "nowrap" }}>
@@ -72,14 +97,14 @@ export function AppShell({ children, split, demo, tour, onStopTour, region, chec
         )}
         {/* 自动演示时字幕替掉它：视频里不需要这行给演示者看的提醒 */}
         {demo && !tour?.running && (
-          <span title="锁定账号库即退出演示，回到真实账号库" style={{ padding: "2px 10px", borderRadius: 999, background: "rgba(255,125,0,0.12)", color: C.warn, fontSize: 11 }}>
-            演示模式 · 全是假数据 · 主密码 {DEMO_PASSWORD} · 锁定即退出
+          <span title="全是假数据，不碰真实账号库；锁定账号库即退出演示" style={{ padding: "2px 10px", borderRadius: 999, background: "rgba(255,125,0,0.12)", color: C.warn, fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>
+            演示模式 · 主密码 {DEMO_PASSWORD}
           </span>
         )}
         <RegionBadge state={region} busy={checking} onClick={onCheck} />
-        <Brand size={15} />
+        {!split && <Brand size={15} />}
         {notice && (
-          <div data-tauri-drag-region="false" style={{ position: "absolute", top: 42, right: 20, zIndex: 35, maxWidth: 330, padding: "12px 14px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 4px 18px rgba(0,0,0,0.12)", fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
+          <div data-tauri-drag-region="false" style={{ position: "absolute", top: TOPBAR_H + 2, right: 20, zIndex: 35, maxWidth: 330, padding: "12px 14px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 4px 18px rgba(0,0,0,0.12)", fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
             {notice}
             <span onClick={onDismiss} style={{ marginLeft: 10, color: C.brand, cursor: "pointer" }}>关闭</span>
           </div>
@@ -120,9 +145,8 @@ export function NavItem({
       style={{
         padding: compact ? "6px 10px" : "9px 10px",
         borderRadius: 7,
-        background: active ? C.surface : "transparent",
-        // 选中态用描边+阴影代替"忽然变白"，切换时不刺眼
-        boxShadow: active ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+        // 侧栏是白底，选中的用浅灰底标出来
+        background: active ? C.bg : "transparent",
         fontSize: muted ? 12 : 13,
         color: active ? C.text : muted ? C.muted : C.sub,
         fontWeight: active ? 500 : 400,
@@ -131,7 +155,7 @@ export function NavItem({
         alignItems: "center",
         gap: 8,
         cursor: "pointer",
-        transition: "background 120ms ease, box-shadow 120ms ease",
+        transition: "background 120ms ease",
         userSelect: "none",
       }}
     >
@@ -261,7 +285,7 @@ export function FilterGroup({
 }
 
 /**
- * 左侧 224px 灰底栏的外壳，三个页面尺寸/底色要一致。
+ * 左侧 224px 侧栏的外壳，三个页面尺寸/底色要一致。跟内容区同底色，只靠右边一条细线分开
  * 只有上半部分滚动，`footer`（导航）固定在底部。
  */
 export function Sidebar({ children, footer }: { children?: ReactNode; footer?: ReactNode }) {
@@ -272,13 +296,14 @@ export function Sidebar({ children, footer }: { children?: ReactNode; footer?: R
         flexShrink: 0,
         boxSizing: "border-box",
         padding: "20px 16px 16px",
-        background: C.bg,
+        background: C.surface,
         borderRight: `1px solid ${C.border}`,
         display: "flex",
         flexDirection: "column",
       }}
     >
-      <div style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* sb-scroll：滚动条只在鼠标移上来时出现（index.html），平时贴着分隔线的那道灰条会把线加粗一倍 */}
+      <div className="sb-scroll" style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 18 }}>
         {children}
       </div>
       {footer}

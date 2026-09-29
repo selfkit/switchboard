@@ -28,6 +28,8 @@ export function RegionBadge({ state, onClick, busy }: { state: api.RegionState |
         padding: "5px 9px",
         borderRadius: 7,
         fontSize: 11,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
         border: `1px solid ${C.border}`,
         cursor: busy ? "default" : "pointer",
         color: mainlandWithTunnel ? C.warn : t?.color ?? C.sub,

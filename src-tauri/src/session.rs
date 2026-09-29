@@ -25,9 +25,9 @@ use tauri::{
 
 /// 主窗口左侧导航栏宽度，账号页面从这里开始铺
 const SIDEBAR_W: f64 = 224.0;
-/// 顶部留给 App 自己画的一条（右上角的品牌标就在这儿）。
+/// 顶部留给 App 自己画的一条（品牌标、网络检测、账号列表的搜索都在这一行）。52 是 macOS 工具栏的标准高度，红绿灯见 tauri.conf.json 的 trafficLightPosition。
 /// 账号页面是原生 webview，会盖住网页画的一切，所以只能给它让出这块地方。
-const TOPBAR_H: f64 = 40.0;
+const TOPBAR_H: f64 = 52.0;
 /// 顶栏下面那条页签条的高度。**必须和前端 Layout.tsx 的 TABS_H 一致**，
 /// 否则页签条和页面之间会露一条缝或者互相盖住（有 `frontend_layout_constants_match` 钉着）。
 /// 固定占位、不按"有没有第二个页签"动态收放：高度一变 webview 整块跳，比省掉这 34px 难受。

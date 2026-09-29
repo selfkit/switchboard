@@ -317,7 +317,7 @@ export default function SessionsPage({
                   gap: 8,
                   padding: "6px 8px",
                   borderRadius: 7,
-                  background: cur ? C.surface : "transparent",
+                  background: cur ? C.bg : "transparent",
                   border: `1px solid ${cur ? C.border : "transparent"}`,
                   cursor: "pointer",
                 }}

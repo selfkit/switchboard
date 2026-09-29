@@ -1,9 +1,4 @@
-<!doctype html>
-<html lang="zh">
-  <head>
-    <meta charset="utf-8" />
-    <title>Switchboard</title>
-    <style>
+
       /* 调色板（src/ui.tsx 的 C 引用这些变量）。深色跟着系统外观走 */
       :root {
         color-scheme: light dark;
@@ -41,10 +36,4 @@
       .sb-scroll:hover { scrollbar-color: var(--sb-scroll) transparent; }
       .sb-scroll::-webkit-scrollbar-thumb { background: transparent; }
       .sb-scroll:hover::-webkit-scrollbar-thumb { background: var(--sb-scroll); }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+    

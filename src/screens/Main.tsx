@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api";
 import type { Account, SessionInfo } from "../api";
 import { C, MOD } from "../ui";
-import { FilterGroup, NavItem, Sidebar, SideNav, type Page } from "./Layout";
+import { FilterGroup, NavItem, Sidebar, SideNav, TopbarSlot, type Page } from "./Layout";
 
 type Filter = { kind: "all" } | { kind: "owner"; value: string } | { kind: "platform"; value: string };
 
@@ -71,21 +71,12 @@ export default function Main(p: Props) {
         </div>
       </Sidebar>
 
-      <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <div
-          data-tauri-drag-region
-          style={{
-            height: 72,
-            flexShrink: 0,
-            boxSizing: "border-box",
-            padding: "0 32px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            borderBottom: `1px solid ${C.border}`,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      {/* 上沿一条细线：卡片往上滚时有个边界，不然像是凭空被切掉 */}
+      <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", minWidth: 0, borderTop: `1px solid ${C.border}` }}>
+        {/* 搜索和按钮放进顶栏那一行，不在顶栏下面再起一行（见 Layout 的 TopbarSlot）。
+            顶栏整条是窗口拖动区，能点的都得是 button / input，拖动脚本才会让开 */}
+        <TopbarSlot>
+          <div style={{ flexGrow: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, padding: "0 16px 0 32px" }}>
             <input
               placeholder={blurred ? "搜索内容已隐藏" : `搜索应用名 / 备注...（${MOD}K 快捷切换）`}
               value={blurred ? "" : q}
@@ -93,39 +84,46 @@ export default function Main(p: Props) {
               aria-label="搜索账号"
               disabled={blurred}
               style={{
-                width: 300,
+                flex: "0 1 300px",
+                minWidth: 140,
+                height: 30,
                 boxSizing: "border-box",
-                padding: "9px 12px",
+                padding: "0 12px",
                 borderRadius: 7,
                 border: `1px solid ${C.border}`,
                 background: C.bg,
-                fontSize: 13,
+                color: C.text,
+                fontSize: 12,
               }}
             />
-            <div
+            <button
+              type="button"
               onClick={() => p.onGo("sessions")}
+              title="到会话页"
               style={{
-                padding: "9px 14px",
+                height: 30,
+                padding: "0 12px",
+                border: 0,
                 borderRadius: 7,
                 background: p.sessions.length ? C.brandSoft : C.bg,
                 color: p.sessions.length ? C.brand : C.muted,
                 fontSize: 12,
                 fontWeight: 500,
-                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
             >
               {p.sessions.length} 个账号在线
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            </button>
+            <div style={{ flexGrow: 1 }} />
             <button
               type="button"
               aria-pressed={blurred}
               onClick={() => setBlurred((value) => !value)}
               title={blurred ? "退出截图模糊模式" : "模糊账号列表，用于截图"}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 7, border: `1px solid ${blurred ? C.brand : C.border}`, background: blurred ? C.brandSoft : C.surface, color: blurred ? C.brand : C.sub, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+              style={{ display: "flex", alignItems: "center", gap: 6, height: 30, padding: "0 12px", borderRadius: 7, border: `1px solid ${blurred ? C.brand : C.border}`, background: blurred ? C.brandSoft : C.surface, color: blurred ? C.brand : C.sub, fontSize: 12, whiteSpace: "nowrap", flexShrink: 0 }}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M2 12s3.7-6 10-6 10 6 10 6-3.7 6-10 6S2 12 2 12Z" />
                 <circle cx="12" cy="12" r="3" />
                 {blurred && <path d="M3 3l18 18" />}
@@ -133,13 +131,14 @@ export default function Main(p: Props) {
               {blurred ? "显示列表" : "模糊列表"}
             </button>
             <button
+              type="button"
               onClick={p.onAdd}
-              style={{ padding: "9px 16px", borderRadius: 7, border: "none", background: C.brand, color: C.onBrand, fontSize: 13, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap" }}
+              style={{ height: 30, padding: "0 14px", borderRadius: 7, border: "none", background: C.brand, color: C.onBrand, fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}
             >
               + 新增账号
             </button>
           </div>
-        </div>
+        </TopbarSlot>
 
         {p.accounts.length === 0 ? (
           <EmptyState onAdd={p.onAdd} />
