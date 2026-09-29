@@ -1731,6 +1731,8 @@ mod tests {
     fn manual_fill_only_checks_domain_or_ip() {
         let ok = |a: &str, b: &str| same_host(&a.parse().unwrap(), &b.parse().unwrap());
         assert!(ok("https://signin.aliyun.com/", "https://account.aliyun.com/x"), "同一个域名的子域名");
+        assert!(ok("https://aliyun.com/", "https://ram.console.aliyun.com/"), "主域名和多级子域名互通");
+        assert!(ok("https://a.example.com.cn/", "https://x.y.example.com.cn/"));
         assert!(ok("https://signin.aliyun.com/", "http://signin.aliyun.com/"), "协议不管");
         assert!(ok("http://203.0.113.10:8888/login", "http://203.0.113.10:9000/"), "同一个 IP 换端口也行");
         assert!(ok("http://localhost:8080/", "http://localhost:9090/"));
