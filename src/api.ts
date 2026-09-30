@@ -96,6 +96,10 @@ export type SessionInfo = {
   /** 这个账号开着的页签；上面那几个状态说的是**当前页签** */
   tabs: TabInfo[];
   active_tab: number;
+  /** 开了保活：一段时间没人动就刷新页面，免得登录过期 */
+  keep_alive: boolean;
+  /** 网络异常时也照样保活；没勾的话区域检测判为异常就暂停 */
+  keep_alive_any_network: boolean;
 };
 
 export const isInitialized = () => invoke<boolean>("is_initialized");
@@ -205,6 +209,9 @@ export type OpenOutcome = { opened: boolean; blocked: Verdict | null; mode: Regi
 export const switchOrOpenAccount = (accountId: string, force = false) =>
   invoke<OpenOutcome>("switch_or_open_account", { accountId, force });
 export const listActiveSessions = () => invoke<SessionInfo[]>("list_active_sessions");
+/** 这个账号的保活开关，记在库里，下次打开照样生效 */
+export const setKeepAlive = (accountId: string, on: boolean, anyNetwork: boolean) =>
+  invoke<void>("set_keep_alive", { accountId, on, anyNetwork });
 export const closeSession = (accountId: string) => invoke<void>("close_session", { accountId });
 /** 重新加载页面。加载失败后的「刷新」用它 */
 export const reloadSession = (accountId: string) => invoke<void>("reload_session", { accountId });

@@ -48,6 +48,8 @@ const DEFAULT_WATCH_SECS: u64 = 2 * 60 * 60;
 /// 多久没操作就自动锁回登录页。0 = 关闭。判断"要不要锁"这个决定留在前端（App.tsx）——
 /// 前端是 App 自己唯一的界面，不是要防着的对手，不用照区域检测那样搬一整套后端常驻线程。
 const AUTO_LOCK_SECS_KEY: &str = "auto_lock_secs";
+/// 哪些账号开了保活：`{账号 id: 网络异常时也保活}`，没开的不在里面。见 session.rs 的 `keep_alive`
+const KEEP_ALIVE_KEY: &str = "keep_alive_accounts";
 
 /// "最近一次操作"的时间戳，主窗口和账号页面共用一份。
 ///
@@ -477,8 +479,12 @@ fn enter_demo(app: AppHandle, vault: State<Vault>) -> Result<(), String> {
 ///
 /// **已经超时的不续命**，返回 true 让调用方去锁。否则人离开半小时、回来随手一点，
 /// 赶在前端下一轮检查之前把时钟刷新了，自动锁定就被一次点击绕过去了。
+///
+/// 是从哪个账号页面报上来的，就顺手给那个账号的保活重新计时（主窗口报的对不上任何页签，什么也不做）。
+/// 账号认的是调用方自己的 webview，页面没法替别的账号报
 #[tauri::command]
-fn touch_activity(activity: State<Activity>) -> bool {
+fn touch_activity(app: AppHandle, webview: Webview, activity: State<Activity>) -> bool {
+    session::mark_input(&app, webview.label());
     activity.0.lock().map(|mut c| c.touch()).unwrap_or(false)
 }
 
@@ -1059,14 +1065,14 @@ async fn switch_or_open_account(
         }
     }
 
-    let (account, cookies) = with_conn(&vault, |c| {
+    let (account, cookies, keep_alive) = with_conn(&vault, |c| {
         let a = db::get_account(c, &account_id)?;
         let cookies: Vec<String> = db::load_cookies(c, &account_id)?
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
-        Ok((a, cookies))
+        Ok((a, cookies, keep_alive_map(c).get(&account_id).copied()))
     })?;
-    session::open_or_focus(&app, &account, &cookies)?;
+    session::open_or_focus(&app, &account, &cookies, keep_alive)?;
     Ok(OpenOutcome { opened: true, blocked: None, mode })
 }
 
@@ -1093,6 +1099,43 @@ fn snapshot_cookies(app: &AppHandle, only: Option<&str>) {
     if saved > 0 {
         // 这条日志是"到底有没有抄成"的唯一凭据，别删
         eprintln!("[switchboard] cookie 快照：{saved} 个账号已存入加密库");
+    }
+}
+
+fn keep_alive_map(conn: &Connection) -> std::collections::HashMap<String, bool> {
+    db::get_meta(conn, KEEP_ALIVE_KEY).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
+
+/// 会话页左栏的「保活」开关。`any_network` = 网络异常时也照样保活（默认关：异常就暂停）
+#[tauri::command]
+fn set_keep_alive(app: AppHandle, vault: State<Vault>, account_id: String, on: bool, any_network: bool) -> Result<(), String> {
+    with_conn(&vault, |c| {
+        let mut m = keep_alive_map(c);
+        if on {
+            m.insert(account_id.clone(), any_network);
+        } else {
+            m.remove(&account_id);
+        }
+        db::set_meta(c, KEEP_ALIVE_KEY, &serde_json::to_string(&m).map_err(|e| e.to_string())?)
+    })?;
+    session::set_keep_alive(&app, &account_id, on.then_some(any_network));
+    Ok(())
+}
+
+/// 保活的一轮，挂在 cookie 快照线程上跑。
+///
+/// 网络异常 = 区域检测开着、且最近一次结论要拦。结论最多是一个哨兵周期前的——
+/// 跟区域拦截本身一样，网络在两次巡检之间变了是看不见的
+fn keep_alive_tick(app: &AppHandle) {
+    let vault = app.state::<Vault>();
+    if vault.0.lock().map(|g| g.is_none()).unwrap_or(true) {
+        return;
+    }
+    let abnormal = region_settings(&vault).0 != "off"
+        && app.state::<RegionCache>().0.lock().is_ok_and(|g| g.as_ref().is_some_and(|(v, _)| v.blocked()));
+    let n = session::keep_alive(app, abnormal);
+    if n > 0 {
+        eprintln!("[switchboard] 保活：刷新了 {n} 个页签");
     }
 }
 
@@ -1750,6 +1793,8 @@ pub fn run() {
                     eprintln!("[switchboard] 快照定时器心跳");
                 }
                 snapshot_cookies(&handle, None);
+                // 保活也挂在这条线程上：窗口最小化、切到别的 App、停在账号列表页都照跑
+                keep_alive_tick(&handle);
             });
 
             // 区域哨兵：网络是会中途变的（VPN 自动重连、分流规则切换、换 Wi-Fi），
@@ -1797,6 +1842,7 @@ pub fn run() {
             set_region_endpoints,
             reset_region_endpoints,
             list_active_sessions,
+            set_keep_alive,
             close_session,
             clear_login,
             reload_session,

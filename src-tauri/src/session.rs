@@ -43,6 +43,10 @@ const MAX_TABS: usize = 12;
 /// 打开或刷新之后多久内的页面才自动填充。登录就发生在这段时间里；
 /// 登录后在控制台里到处点，页面上的"修改密码"之类的框不该再被填上账号密码
 const FILL_WINDOW_SECS: u64 = 120;
+/// 开了保活的账号，多久没人动就刷新一次页面，见 [`keep_alive`]。
+/// 实际间隔还要加上定时器的一轮（lib.rs 的快照线程，正式版 120 秒）。
+// ponytail: 全局一个值，站点超时比 5 分钟还短就不够了，那时再改成按账号设
+const KEEP_ALIVE_SECS: u64 = 3 * 60;
 
 /// 一个账号里的一个页签 = 一个子 webview。
 ///
@@ -128,6 +132,34 @@ impl Tab {
     pub fn url_is_safe(&self) -> bool {
         self.loaded.load(Ordering::Relaxed)
     }
+
+    /// 要重新导航之前把这一页的状态清掉：上次的失败结论作废、重新算加载超时、自动填充重新管用
+    fn renav(&mut self) {
+        if let Ok(mut armed) = self.fill_armed.lock() {
+            *armed = Instant::now(); // 登录过期后点刷新，自动填充得重新管用
+        }
+        self.loaded.store(false, Ordering::Relaxed);
+        self.committed.store(false, Ordering::Relaxed);
+        self.fail = None;
+        self.nav_at = Instant::now();
+    }
+
+    /// 保活刷新时要不要刷这一页。被切断的不刷（刷新等于接回去，区域拦截白设）；
+    /// 独立弹窗多是 OAuth 那种走完就关的；没加载完的正在导航，别打断
+    fn keep_alive_target(&self) -> bool {
+        !self.cut && !self.external && !self.download_only && self.loaded.load(Ordering::Relaxed)
+    }
+}
+
+/// 保活这一轮该不该刷这个账号。
+/// - `setting`：None = 没开保活；Some(true) = 网络异常也照样保活
+/// - `quiet_secs`：这个账号多久没动静了（真人操作或上一次保活刷新）
+/// - `abnormal`：区域检测判为网络异常
+fn keep_alive_due(setting: Option<bool>, quiet_secs: u64, abnormal: bool) -> bool {
+    match setting {
+        None => false,
+        Some(any_network) => (any_network || !abnormal) && quiet_secs >= KEEP_ALIVE_SECS,
+    }
 }
 
 /// 一个账号的会话：一组页签 + 账号级信息。
@@ -141,6 +173,10 @@ pub struct SessionState {
     pub platform: String,
     pub related_app: String,
     pub opened_at: Instant,
+    /// 保活设置：None = 不保活；Some(true) = 网络异常时也保活。存在库的 meta 里，开页面时带进来
+    pub keep_alive: Option<bool>,
+    /// 这个账号最近一次有动静：用户在它的页面里操作过，或者保活刚刷过它
+    pub alive_at: Instant,
 }
 
 impl SessionState {
@@ -1065,6 +1101,7 @@ pub fn open_or_focus(
     app: &AppHandle,
     account: &Account,
     cookies: &[String],
+    keep_alive: Option<bool>,
 ) -> Result<(), String> {
     let label = label_for(&account.id);
     let sessions = app.state::<Sessions>();
@@ -1099,6 +1136,8 @@ pub fn open_or_focus(
                     account.related_app.clone()
                 },
                 opened_at: Instant::now(),
+                keep_alive,
+                alive_at: Instant::now(),
             },
         );
     }
@@ -1151,6 +1190,8 @@ pub fn list(app: &AppHandle) -> Result<Vec<SessionInfo>, String> {
                     })
                     .collect(),
                 active_tab: s.active_tab,
+                keep_alive: s.keep_alive.is_some(),
+                keep_alive_any_network: s.keep_alive == Some(true),
             }
         })
         .collect();
@@ -1478,6 +1519,59 @@ pub fn any_cut(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// 保活：开了保活、并且 [`KEEP_ALIVE_SECS`] 没人动过的账号，把它的页签按停着的地址重新打开一遍。
+/// 只管已经开着的会话，账号列表里没打开的不碰。
+///
+/// 为什么是刷新而不是后台发个请求：云账户这类控制台是纯前端单页应用，页面地址由 openresty 静态返回，
+/// 请求它碰不到后端，登录计时一点不动。刷新会让应用重新调一遍接口，服务端的滑动过期和前端自己的
+/// 空闲计时一起归零。代价是没提交的表单会丢——可人不在这么久，不刷也是被踢回登录页。
+///
+/// 走 navigate 回 `last_url` 而不是 reload：reload 一个 POST 出来的页面会把表单再提交一次。
+/// 返回刷了几个页签
+pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
+    let jobs: Vec<(String, tauri::Url)> = {
+        let sessions = app.state::<Sessions>();
+        let Ok(mut map) = sessions.map.lock() else { return 0 };
+        let mut jobs = Vec::new();
+        for s in map.values_mut() {
+            if !keep_alive_due(s.keep_alive, s.alive_at.elapsed().as_secs(), abnormal) {
+                continue;
+            }
+            s.alive_at = Instant::now();
+            for t in s.tabs.iter_mut().filter(|t| t.keep_alive_target()) {
+                let url = t.last_url.lock().map(|u| u.clone()).unwrap_or_default();
+                let Ok(parsed) = url.parse() else { continue };
+                t.renav();
+                jobs.push((t.label.clone(), parsed));
+            }
+        }
+        jobs
+    };
+    let n = jobs.iter().filter(|(label, url)| app.get_webview(label).is_some_and(|v| v.navigate(url.clone()).is_ok())).count();
+    if n > 0 {
+        refresh_layout(app);
+    }
+    n
+}
+
+/// 用户在某个账号页面里真的动了一下（adapter 的活动心跳报上来的），保活就从现在起重新计时
+pub fn mark_input(app: &AppHandle, label: &str) {
+    let sessions = app.state::<Sessions>();
+    let Ok(mut map) = sessions.map.lock() else { return };
+    if let Some(s) = map.values_mut().find(|s| s.tabs.iter().any(|t| t.label == label)) {
+        s.alive_at = Instant::now();
+    }
+}
+
+/// 改开着的会话的保活设置。没开着就算了，下次打开时从库里读
+pub fn set_keep_alive(app: &AppHandle, account_id: &str, setting: Option<bool>) {
+    let sessions = app.state::<Sessions>();
+    let Ok(mut map) = sessions.map.lock() else { return };
+    if let Some(s) = map.get_mut(account_id) {
+        s.keep_alive = setting;
+    }
+}
+
 /// 页面自报打不开（HTTP 4xx/5xx 或纯白板）。由 `report_page_state` 命令调用。
 pub fn mark_failure(app: &AppHandle, label: &str, reason: Option<String>) {
     {
@@ -1510,14 +1604,7 @@ pub fn reload(app: &AppHandle, account_id: &str, url: &str) -> Result<(), String
         } else {
             s.active().last_url.lock().map(|u| u.clone()).unwrap_or_default()
         };
-        let t = s.active_mut();
-        if let Ok(mut armed) = t.fill_armed.lock() {
-            *armed = Instant::now(); // 登录过期后点刷新，自动填充得重新管用
-        }
-        t.loaded.store(false, Ordering::Relaxed);
-        t.committed.store(false, Ordering::Relaxed);
-        t.fail = None; // 上次的失败结论作废，重新来过
-        t.nav_at = Instant::now(); // 重新开始算超时
+        s.active_mut().renav();
         if own.trim().is_empty() { url.trim().to_string() } else { own }
     };
     let parsed = target.parse().map_err(|_| format!("地址不合法：{target}"))?;
@@ -1736,6 +1823,29 @@ mod tests {
     }
 
     #[test]
+    fn keep_alive_only_when_on_quiet_and_network_allows() {
+        let quiet = KEEP_ALIVE_SECS;
+        assert!(!keep_alive_due(None, quiet * 10, false), "没开保活的永远不刷");
+        assert!(!keep_alive_due(Some(false), quiet - 1, false), "刚有人动过，不刷");
+        assert!(keep_alive_due(Some(false), quiet, false));
+        assert!(!keep_alive_due(Some(false), quiet, true), "默认网络异常就暂停");
+        assert!(keep_alive_due(Some(true), quiet, true), "勾了「网络异常也保活」就不管网络");
+    }
+
+    #[test]
+    fn keep_alive_skips_cut_popup_download_and_loading_tabs() {
+        assert!(tab("ok", true, false, None).keep_alive_target());
+        assert!(!tab("loading", false, false, None).keep_alive_target(), "正在导航的别打断");
+        assert!(!tab("popup", true, true, None).keep_alive_target(), "独立弹窗不刷");
+        let mut cut = tab("cut", true, false, None);
+        cut.cut = true;
+        assert!(!cut.keep_alive_target(), "刷新被切断的页面等于把它接回去");
+        let mut dl = tab("dl", true, false, None);
+        dl.download_only = true;
+        assert!(!dl.keep_alive_target());
+    }
+
+    #[test]
     fn user_url_gets_https_and_only_http_passes() {
         assert_eq!(parse_user_url(" help.aliyun.com/doc?id=1 ").unwrap().as_str(), "https://help.aliyun.com/doc?id=1");
         assert_eq!(parse_user_url("http://203.0.113.10:8888/x").unwrap().as_str(), "http://203.0.113.10:8888/x");
@@ -1766,6 +1876,8 @@ mod tests {
             platform: String::new(),
             related_app: String::new(),
             opened_at: Instant::now(),
+            keep_alive: None,
+            alive_at: Instant::now(),
         };
         assert!(s.tabs[2].failed(), "不处理的话：没加载过的新页签超时就判成打不开");
         assert!(s.mark_download_only("t2"));

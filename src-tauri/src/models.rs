@@ -79,4 +79,8 @@ pub struct SessionInfo {
     /// 这个账号开着的页签。至少一个；loaded/failed/cut 那几项说的是**当前页签**
     pub tabs: Vec<TabInfo>,
     pub active_tab: usize,
+    /// 开了保活（见 session.rs 的 keep_alive）
+    pub keep_alive: bool,
+    /// 网络异常时也照样保活；关着的话区域检测判为异常就暂停
+    pub keep_alive_any_network: bool,
 }

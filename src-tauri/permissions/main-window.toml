@@ -38,6 +38,7 @@ commands.allow = [
   "set_region_endpoints",
   "reset_region_endpoints",
   "list_active_sessions",
+  "set_keep_alive",
   "close_session",
   "clear_login",
   "reload_session",

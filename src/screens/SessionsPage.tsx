@@ -203,6 +203,12 @@ export default function SessionsPage({
       setTip(copied ? `已填${label}；没进去就直接在输入框里 ${MOD}V（已复制，30 秒后自动清空）` : `已填${label}`);
     });
 
+  const keepAlive = (id: string, on: boolean, anyNetwork: boolean) =>
+    run(async () => {
+      await api.setKeepAlive(id, on, anyNetwork);
+      setSessions(await api.listActiveSessions());
+    });
+
   async function open(a: Account) {
     setBusy(a.id);
     await run(async () => {
@@ -334,6 +340,7 @@ export default function SessionsPage({
                     {busy !== a.id && stateOf(a.id) === "loading" && " · 加载中…"}
                     {stateOf(a.id) === "failed" && <span style={{ color: C.danger }}> · 打不开</span>}
                     {stateOf(a.id) === "cut" && <span style={{ color: C.danger }}> · 已断开</span>}
+                    {byId.get(a.id)?.keep_alive && " · 保活"}
                   </span>
                 </div>
                 {on && (
@@ -370,6 +377,26 @@ export default function SessionsPage({
                   ) : (
                     <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
                       {currentState === "failed" ? "页面没打开，先刷新" : "页面加载中…"}
+                    </div>
+                  )}
+                  {currentInfo && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: C.sub }}>
+                      <label
+                        title={`页面开着时，这个账号 3 分钟没操作就自动刷新一次，免得登录过期；没提交的表单会丢。网络异常（区域检测判为要拦）时暂停`}
+                        style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+                      >
+                        <input type="checkbox" checked={currentInfo.keep_alive} onChange={(e) => keepAlive(a.id, e.target.checked, false)} style={{ accentColor: C.brand, margin: 0 }} />
+                        保活（没操作就定时刷新）
+                      </label>
+                      {currentInfo.keep_alive && (
+                        <label
+                          title="不管区域检测的结果一直保活。只给允许境外访问的账号勾"
+                          style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", paddingLeft: 18 }}
+                        >
+                          <input type="checkbox" checked={currentInfo.keep_alive_any_network} onChange={(e) => keepAlive(a.id, true, e.target.checked)} style={{ accentColor: C.brand, margin: 0 }} />
+                          网络异常时也保活
+                        </label>
+                      )}
                     </div>
                   )}
                   <button
