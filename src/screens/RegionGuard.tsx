@@ -169,7 +169,7 @@ export function RegionAlarm({
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 }}>
       <div style={{ width: 470, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ fontSize: 18, color: C.text }}>
-          {heading}{cut && "，已断开所有页面"}
+          {heading}{cut && "，已断开账号页面"}
         </div>
 
         <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", fontSize: 12, color: C.sub, lineHeight: 1.8 }}>
@@ -177,7 +177,7 @@ export function RegionAlarm({
           {verdict.ip && <span style={{ color: C.muted }}>（{verdict.ip}）</span>}
           <br />
           {cut
-            ? "所有账号页面已经断开连接，不会再发出任何请求。"
+            ? "账号页面已经断开连接，不会再发出任何请求（勾了「网络异常时也保活、不断开」的账号除外）。"
             : "账号页面还连着，正在继续发请求。"}
         </div>
 
@@ -214,7 +214,7 @@ export function RegionAlarm({
                 继续用着
               </span>
               <Button kind="primary" onClick={onCut}>
-                断开所有页面
+                断开账号页面
               </Button>
             </>
           )}

@@ -390,11 +390,11 @@ export default function SessionsPage({
                       </label>
                       {currentInfo.keep_alive && (
                         <label
-                          title="不管区域检测的结果一直保活。只给允许境外访问的账号勾"
+                          title="你同意这个账号走境外网络 / 代理：区域检测判为网络异常时照常保活，区域拦截也不断开它。只给允许境外访问的账号勾"
                           style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", paddingLeft: 18 }}
                         >
                           <input type="checkbox" checked={currentInfo.keep_alive_any_network} onChange={(e) => keepAlive(a.id, true, e.target.checked)} style={{ accentColor: C.brand, margin: 0 }} />
-                          网络异常时也保活
+                          网络异常时也保活、不断开
                         </label>
                       )}
                     </div>

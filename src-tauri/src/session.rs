@@ -180,6 +180,16 @@ pub struct SessionState {
 }
 
 impl SessionState {
+    /// 勾了「网络异常时也保活」= 用户明确同意这个账号走异常网络（境外出口、代理），区域拦截不切断它
+    fn region_exempt(&self) -> bool {
+        self.keep_alive == Some(true)
+    }
+
+    /// 网络异常时这个账号还有没有该切断、还没切断的页签
+    fn cuttable(&self) -> bool {
+        !self.region_exempt() && self.tabs.iter().any(|t| !t.cut)
+    }
+
     pub fn active(&self) -> &Tab {
         // active_tab 由 select_tab / close_tab 维护，越界只可能是自己写错了，
         // 但这条路上崩一次等于整个 App 没了（release 是 panic = abort），所以退回第一个
@@ -1475,13 +1485,15 @@ pub fn current_url(app: &AppHandle, account_id: &str) -> Result<String, String> 
 /// 为什么不直接 close：close 掉再开是全新的 webview，正在填的表单、
 /// 没提交的东西全没。切到空白页则保留 webview 和它的 cookie 仓，恢复时导航回去就行。
 ///
-/// 返回被切断的账号数。调用方**必须先抄一次 cookie**——导航会丢掉内存里的会话态。
+/// 勾了「网络异常时也保活」的账号不切，见 [`SessionState::region_exempt`]。
+///
+/// 返回被切断的页签数。调用方**必须先抄一次 cookie**——导航会丢掉内存里的会话态。
 pub fn cut_all(app: &AppHandle) -> usize {
     let sessions = app.state::<Sessions>();
     let Ok(mut map) = sessions.map.lock() else { return 0 };
     let mut n = 0;
     // 一个账号的每个页签都要切：漏一个就等于那一页还在往外发请求
-    for t in map.values_mut().flat_map(|s| s.tabs.iter_mut()) {
+    for t in map.values_mut().filter(|s| !s.region_exempt()).flat_map(|s| s.tabs.iter_mut()) {
         if t.cut {
             continue;
         }
@@ -1499,13 +1511,17 @@ pub fn cut_all(app: &AppHandle) -> usize {
     n
 }
 
-/// 解除切断：每个页面导航回它被切断前停的那个地址。
+/// 解除切断：每个页面导航回它被切断前停的那个地址。`only` 给了就只接回这一个账号。
 /// cookie 仓没动过，所以登录态还在，不用重新登。
-pub fn restore_all(app: &AppHandle) -> usize {
+pub fn restore_all(app: &AppHandle, only: Option<&str>) -> usize {
     let sessions = app.state::<Sessions>();
     let Ok(mut map) = sessions.map.lock() else { return 0 };
     let mut n = 0;
-    for t in map.values_mut().flat_map(|s| s.tabs.iter_mut()) {
+    for t in map
+        .iter_mut()
+        .filter(|(id, _)| only.map_or(true, |o| o == id.as_str()))
+        .flat_map(|(_, s)| s.tabs.iter_mut())
+    {
         if !t.cut {
             continue;
         }
@@ -1529,6 +1545,11 @@ pub fn restore_all(app: &AppHandle) -> usize {
     n
 }
 
+/// 网络异常时还有没有该切断、还没切断的页面（豁免的账号不算）
+pub fn cuttable(app: &AppHandle) -> bool {
+    app.state::<Sessions>().map.lock().map(|m| m.values().any(|s| s.cuttable())).unwrap_or(false)
+}
+
 /// 当前有没有页面处于被切断状态
 pub fn any_cut(app: &AppHandle) -> bool {
     app.state::<Sessions>()
@@ -1545,28 +1566,53 @@ pub fn any_cut(app: &AppHandle) -> bool {
 /// 请求它碰不到后端，登录计时一点不动。刷新会让应用重新调一遍接口，服务端的滑动过期和前端自己的
 /// 空闲计时一起归零。代价是没提交的表单会丢——可人不在这么久，不刷也是被踢回登录页。
 ///
-/// 走 navigate 回 `last_url` 而不是 reload：reload 一个 POST 出来的页面会把表单再提交一次。
+/// 走 navigate 回页面现在的地址而不是 reload：reload 一个 POST 出来的页面会把表单再提交一次。
 /// 返回刷了几个页签
 pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
-    let jobs: Vec<(String, tauri::Url)> = {
-        let sessions = app.state::<Sessions>();
+    let sessions = app.state::<Sessions>();
+    let labels: Vec<String> = {
         let Ok(mut map) = sessions.map.lock() else { return 0 };
-        let mut jobs = Vec::new();
+        let mut labels = Vec::new();
         for s in map.values_mut() {
             if !keep_alive_due(s.keep_alive, s.alive_at.elapsed().as_secs(), abnormal) {
                 continue;
             }
             s.alive_at = Instant::now();
-            for t in s.tabs.iter_mut().filter(|t| t.keep_alive_target()) {
-                let url = t.last_url.lock().map(|u| u.clone()).unwrap_or_default();
-                let Ok(parsed) = url.parse() else { continue };
-                t.renav();
-                jobs.push((t.label.clone(), parsed));
+            labels.extend(s.tabs.iter().filter(|t| t.keep_alive_target()).map(|t| t.label.clone()));
+        }
+        labels
+    };
+    if labels.is_empty() {
+        return 0;
+    }
+    // 单页应用（云账户就是）站内换页不整页加载，last_url 还停在刚进来那一页，刷回那里等于把人踢回首页，
+    // 所以问 WKWebView 要现在的地址。挑出来的都加载过，问它是安全的（见 url_is_safe）；
+    // 它要派发回事件循环线程等回话，所以**不能拿着锁问**
+    let now: Vec<(String, Option<tauri::Url>)> = labels
+        .into_iter()
+        .map(|l| {
+            let url = app.get_webview(&l).and_then(|v| v.url().ok());
+            (l, url)
+        })
+        .collect();
+    // 导航反过来**要拿着锁做**，再核一遍：中间哨兵可能刚把页面切断，这时导航回去等于替它解除了拦截
+    let mut n = 0;
+    {
+        let Ok(mut map) = sessions.map.lock() else { return 0 };
+        for (label, url) in now {
+            let Some(t) = map.values_mut().find_map(|s| s.tab_of(&label)) else { continue };
+            if !t.keep_alive_target() {
+                continue;
+            }
+            let last = t.last_url.lock().map(|u| u.clone()).unwrap_or_default();
+            let Some(target) = url.filter(|u| u.scheme() != "about").or_else(|| last.parse().ok()) else { continue };
+            let Some(v) = app.get_webview(&label) else { continue };
+            t.renav();
+            if v.navigate(target).is_ok() {
+                n += 1;
             }
         }
-        jobs
-    };
-    let n = jobs.iter().filter(|(label, url)| app.get_webview(label).is_some_and(|v| v.navigate(url.clone()).is_ok())).count();
+    }
     if n > 0 {
         refresh_layout(app);
     }
@@ -1582,13 +1628,16 @@ pub fn mark_input(app: &AppHandle, label: &str) {
     }
 }
 
-/// 改开着的会话的保活设置。没开着就算了，下次打开时从库里读
-pub fn set_keep_alive(app: &AppHandle, account_id: &str, setting: Option<bool>) {
+/// 改开着的会话的保活设置。没开着就算了，下次打开时从库里读。
+/// 返回改之前是不是豁免区域拦截的（勾着「网络异常时也保活」）
+pub fn set_keep_alive(app: &AppHandle, account_id: &str, setting: Option<bool>) -> bool {
     let sessions = app.state::<Sessions>();
-    let Ok(mut map) = sessions.map.lock() else { return };
-    if let Some(s) = map.get_mut(account_id) {
-        s.keep_alive = setting;
-    }
+    let Ok(mut map) = sessions.map.lock() else { return false };
+    let Some(s) = map.get_mut(account_id) else { return false };
+    let was = s.region_exempt();
+    s.keep_alive = setting;
+    s.alive_at = Instant::now(); // 开了很久的页面，刚勾上别当场就刷
+    was
 }
 
 /// 页面自报打不开（HTTP 4xx/5xx 或纯白板）。由 `report_page_state` 命令调用。
@@ -1849,6 +1898,28 @@ mod tests {
         assert!(keep_alive_due(Some(false), quiet, false));
         assert!(!keep_alive_due(Some(false), quiet, true), "默认网络异常就暂停");
         assert!(keep_alive_due(Some(true), quiet, true), "勾了「网络异常也保活」就不管网络");
+    }
+
+    #[test]
+    fn region_cut_spares_only_accounts_allowed_on_any_network() {
+        let mut s = SessionState {
+            tabs: vec![tab("a", true, false, None)],
+            active_tab: 0,
+            next_seq: 1,
+            platform: String::new(),
+            related_app: String::new(),
+            opened_at: Instant::now(),
+            keep_alive: None,
+            alive_at: Instant::now(),
+        };
+        assert!(s.cuttable());
+        s.keep_alive = Some(false);
+        assert!(s.cuttable(), "只开保活、没勾「网络异常时也保活」的照切");
+        s.keep_alive = Some(true);
+        assert!(!s.cuttable(), "勾了就是用户同意走异常网络，不切");
+        s.keep_alive = None;
+        s.tabs[0].cut = true;
+        assert!(!s.cuttable(), "切过的不用再切");
     }
 
     #[test]

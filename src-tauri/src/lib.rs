@@ -328,6 +328,8 @@ fn lock_down(app: &AppHandle, vault: &State<Vault>, keep_alive: bool) -> Result<
         .unwrap_or_default();
     session::purge(app, &ids);
     session::close_all(app, &kept)?;
+    // 锁着时哨兵照这份设置管留下的会话（见 region_settings），放开连接前记一份最新的
+    let _ = region_settings(vault);
     *vault.0.lock().map_err(|e| e.to_string())? = None;
     // 「仍要继续」只管这一次解锁期间
     if let Ok(mut g) = app.state::<RegionGrace>().0.lock() {
@@ -729,7 +731,8 @@ enum Act {
 }
 
 /// - `blocked`：这一轮探到境外出口，或大陆出口与可达的境外探针并存
-/// - `cut`：当前页面是不是已经处于切断状态
+/// - `cut`：网络正常时 = 有页面处于切断状态（要接回）；网络异常时 = 没有该切还没切的了
+///   （都切过了、开着的全是豁免账号、或者一个页面都没开）。见 `region_patrol`
 /// - `changed`：跟上一轮相比状态翻转了
 /// - `grace`：用户刚在拦截框里点过「仍要继续」，还在宽限期里（见 `FORCE_GRACE_SECS`）
 fn decide(mode: &str, blocked: bool, cut: bool, changed: bool, grace: bool) -> Act {
@@ -800,7 +803,9 @@ async fn region_patrol(app: &AppHandle) {
     };
 
     let mut ask = false;
-    let act = decide(&mode, blocked, session::any_cut(app), changed, grace_active(app));
+    // 网络异常时不能只看"有没有页面被切断"：切过一轮之后再开的页面、刚撤掉豁免的账号都还连着，照样得切
+    let cut = if blocked { !session::cuttable(app) } else { session::any_cut(app) };
+    let act = decide(&mode, blocked, cut, changed, grace_active(app));
     match act {
         // 先抄 cookie 再断——导航走会丢掉内存里的登录态
         Act::Cut => {
@@ -808,12 +813,12 @@ async fn region_patrol(app: &AppHandle) {
             let n = session::cut_all(app);
             eprintln!("[switchboard] 区域拦截：已切断 {n} 个会话（出口 {}）", verdict.ip);
             // 断完也要弹框：页面无缘无故变空白，不说一声用户只会以为程序坏了。
-            // 只有这一次会弹——下一轮 cut 已经是 true，判定成 Nothing
-            ask = true;
+            // 只有这一次会弹——下一轮没有可切的了，判定成 Nothing
+            ask = n > 0;
         }
         // 自动接回去。要求用户手动点一次更"稳"，但网络抖一下就得人来救一次，实际很烦
         Act::Restore => {
-            let n = session::restore_all(app);
+            let n = session::restore_all(app, None);
             eprintln!("[switchboard] 区域恢复：已接回 {n} 个会话");
         }
         Act::Ask => ask = true,
@@ -843,7 +848,7 @@ async fn recheck_and_restore(app: AppHandle, vault: State<'_, Vault>) -> Result<
     let (mode, endpoints) = region_settings(&vault);
     let verdict = region_verdict(&app, &endpoints, true).await;
     if !verdict.blocked() {
-        session::restore_all(&app);
+        session::restore_all(&app, None);
     }
     if let Ok(mut g) = app.state::<RegionGuard>().0.lock() {
         *g = verdict.blocked();
@@ -1127,7 +1132,7 @@ fn keep_alive_map(conn: &Connection) -> std::collections::HashMap<String, bool> 
     db::get_meta(conn, KEEP_ALIVE_KEY).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
 }
 
-/// 会话页左栏的「保活」开关。`any_network` = 网络异常时也照样保活（默认关：异常就暂停）
+/// 会话页左栏的「保活」开关。`any_network` = 网络异常时也照样保活、区域拦截也不切断它（默认关：异常就暂停）
 #[tauri::command]
 fn set_keep_alive(app: AppHandle, vault: State<Vault>, account_id: String, on: bool, any_network: bool) -> Result<(), String> {
     with_conn(&vault, |c| {
@@ -1139,7 +1144,14 @@ fn set_keep_alive(app: AppHandle, vault: State<Vault>, account_id: String, on: b
         }
         db::set_meta(c, KEEP_ALIVE_KEY, &serde_json::to_string(&m).map_err(|e| e.to_string())?)
     })?;
-    session::set_keep_alive(&app, &account_id, on.then_some(any_network));
+    let was_exempt = session::set_keep_alive(&app, &account_id, on.then_some(any_network));
+    if on && any_network {
+        // 用户明确同意这个账号走异常网络：已经被区域拦截切断的就地接回
+        session::restore_all(&app, Some(&account_id));
+    } else if was_exempt {
+        // 撤掉了豁免：网络要是异常，别等下一轮哨兵（默认两小时）才断
+        tauri::async_runtime::spawn(async move { region_patrol(&app).await });
+    }
     Ok(())
 }
 
@@ -1151,10 +1163,30 @@ fn keep_alive_tick(app: &AppHandle) {
     let vault = app.state::<Vault>();
     let abnormal = region_settings(&vault).0 != "off"
         && app.state::<RegionCache>().0.lock().is_ok_and(|g| g.as_ref().is_some_and(|(v, _)| v.blocked()));
+    #[cfg(target_os = "macos")]
+    if !session::keep_alive_ids(app).is_empty() {
+        no_app_nap();
+    }
     let n = session::keep_alive(app, abnormal);
     if n > 0 {
         eprintln!("[switchboard] 保活：刷新了 {n} 个页签");
     }
+}
+
+/// 关掉 App Nap。窗口被挡住、最小化之后 macOS 会让 App 打盹、推迟它的定时器，
+/// 保活那条两分钟一轮的线程可能被拖到登录早过期了才轮到。只关打盹，系统空闲睡眠照常（睡了就没法保活）
+// ponytail: 一旦开过保活就不打盹直到退出，关掉保活也不恢复；在乎这点电量再按有没有保活会话 begin/end
+#[cfg(target_os = "macos")]
+fn no_app_nap() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
+        let token = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
+            NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
+            &NSString::from_str("保活：定时刷新账号页面"),
+        );
+        std::mem::forget(token); // token 一释放活动就结束，留到退出
+    });
 }
 
 #[tauri::command]

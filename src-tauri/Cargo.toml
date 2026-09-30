@@ -37,7 +37,7 @@ percent-encoding = "2"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSControl", "NSButton"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSNotification", "NSOperation", "NSString", "NSObject", "block2"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSNotification", "NSOperation", "NSProcessInfo", "NSString", "NSObject", "block2"] }
 
 # 打包体积和可分析性：strip 掉符号表，LTO 把跨 crate 的边界也揉掉，
 # 单 codegen unit + panic=abort 让产物更难对着符号读。
