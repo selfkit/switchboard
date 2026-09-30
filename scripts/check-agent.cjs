@@ -199,6 +199,48 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     check("S9 most recent wins even when it's the main document", q._value === "hello" && pw._value !== "hello");
   }
 
+  // P: 空白页探测（page_probe_js）。虚拟时钟，render(t) 给出第 t 毫秒时页面上有什么
+  {
+    const ps = rs.indexOf("pub fn page_probe_js()");
+    const PROBE = rs.slice(rs.indexOf("r#\"", ps) + 3, rs.indexOf("\"#", ps));
+    const probe = (status, render) => {
+      let now = 0, timers = [], observers = [];
+      const reports = [];
+      const page = () => render(now);
+      const w = {
+        Date: { now: () => now },
+        setTimeout: (fn, ms) => timers.push({ at: now + ms, fn }),
+        performance: { getEntriesByType: () => [{ responseStatus: status }] },
+        MutationObserver: class { constructor(cb) { this.cb = cb; } observe() { observers.push(this); } disconnect() { observers = observers.filter((o) => o !== this); } },
+        __TAURI_INTERNALS__: { invoke: (cmd, a) => reports.push({ at: now, blank: a.textLen === 0 && !a.interactive, status: a.status }) },
+        document: {
+          get body() { return { innerText: page().text }; },
+          documentElement: {},
+          querySelector: () => page().interactive || null,
+        },
+      };
+      w.window = w;
+      vm.runInNewContext(PROBE, w);
+      let last = JSON.stringify(page());
+      for (; now <= 20000; now += 100) {
+        const due = timers.filter((t) => t.at <= now);
+        timers = timers.filter((t) => t.at > now);
+        due.forEach((t) => t.fn());
+        const cur = JSON.stringify(page());
+        if (cur !== last) { last = cur; observers.slice().forEach((o) => o.cb([])); }
+      }
+      return reports;
+    };
+    const slow = probe(200, (t) => ({ text: t < 3000 ? "" : "控制台", interactive: false }));
+    check("P1 slow SPA (blank for 3s) is never reported blank", slow.length === 1 && !slow[0].blank);
+    const dead = probe(200, () => ({ text: "", interactive: false }));
+    check("P2 truly blank page is reported once, only after 10s", dead.length === 1 && dead[0].blank && dead[0].at >= 10000);
+    const late = probe(200, (t) => ({ text: t < 15000 ? "" : "终于出来了", interactive: false }));
+    check("P3 blank page that renders later clears itself", late.length === 2 && late[0].blank && !late[1].blank && late[1].at >= 15000);
+    const e404 = probe(404, () => ({ text: "", interactive: false }));
+    check("P4 HTTP error is reported right away", e404.length === 1 && e404[0].status === 404 && e404[0].at < 2000);
+  }
+
   for (const [s, n] of results) console.log(s, n);
   const ok = results.every(([s]) => s === "PASS");
   console.log(ok ? "ALL PASS" : "SOME FAILED");

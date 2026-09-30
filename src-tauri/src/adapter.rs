@@ -532,28 +532,45 @@ pub fn find_js() -> &'static str {
 /// 超时判定永远不触发，用户就一直盯着 nginx 的错误页干瞪眼。
 ///
 /// 两个信号，任一成立就算打不开：
-/// - `responseStatus >= 400`：主文档的 HTTP 状态码（Safari 17.4+ / macOS 14.4+）
+/// - `responseStatus >= 400`：主文档的 HTTP 状态码（Safari 17.4+ / macOS 14.4+），1.2 秒时就报
 /// - 正文一个字都没有、也没有任何可交互元素：真·白板
 ///
-/// 延迟 1.2 秒再报，是给 SPA 留出渲染时间——否则首屏还没画出来就被判死刑。
+/// 白板**不能一眼定生死**：SPA 首屏常常只有一个转圈的空 div，接口慢的时候（保活在后台刷新时更常见）
+/// 1.2 秒还没画出来，以前就这样被误杀成"打不开"，页面被藏起来、再也不复查。所以连着 10 秒都是白板才报；
+/// 报了之后页面自己又画出来了，再报一次，后端把"打不开"撤掉、页面重新露出来。
+/// 改了跑 `pnpm check:agent`，里面有这段的检查
 pub fn page_probe_js() -> &'static str {
     r#"(function () {
-  setTimeout(function () {
+  var start = Date.now();
+  function state() {
     var status = 0;
     try {
       var nav = performance.getEntriesByType('navigation')[0];
       if (nav && typeof nav.responseStatus === 'number') status = nav.responseStatus;
     } catch (e) {}
     var text = document.body ? (document.body.innerText || '').trim() : '';
-    var interactive = !!document.querySelector('input, button, form, a[href], video, canvas, iframe');
-    try {
-      window.__TAURI_INTERNALS__.invoke('report_page_state', {
-        status: status,
-        textLen: text.length,
-        interactive: interactive
-      });
-    } catch (e) {}
-  }, 1200);
+    // 图、svg、frameset 也算有东西：只摆一张图 / 一个动画的页面不是白板
+    var interactive = !!document.querySelector('input, button, form, a[href], video, canvas, iframe, frame, img, svg');
+    return { status: status, textLen: text.length, interactive: interactive };
+  }
+  function blank(s) { return s.status < 400 && s.textLen === 0 && !s.interactive; }
+  function report(s) {
+    try { window.__TAURI_INTERNALS__.invoke('report_page_state', s); } catch (e) {}
+  }
+  function probe() {
+    var s = state();
+    if (blank(s) && Date.now() - start < 10000) { setTimeout(probe, 1000); return; }
+    report(s);
+    if (!blank(s)) return;
+    var mo = new MutationObserver(function () {
+      var now = state();
+      if (blank(now)) return;
+      mo.disconnect();
+      report(now);
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  }
+  setTimeout(probe, 1200);
 })()"#
 }
 
