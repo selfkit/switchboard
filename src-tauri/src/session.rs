@@ -1235,21 +1235,40 @@ pub fn close(app: &AppHandle, account_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn close_all(app: &AppHandle) -> Result<(), String> {
+/// 关掉所有账号页面，`keep` 里的账号除外（锁定时留下开了保活的，见 lib.rs 的 `lock_down`）。
+/// 留下的一律藏起来；它们的独立弹窗照样关掉——弹窗是自己的原生窗口，不关就盖在锁屏上面
+pub fn close_all(app: &AppHandle, keep: &[String]) -> Result<(), String> {
     let views: Vec<(String, bool)> = {
         let sessions = app.state::<Sessions>();
         let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
-        map.drain()
-            .flat_map(|(_, s)| s.tabs.into_iter().map(|t| (t.label, t.external)))
-            .collect()
+        let mut views = Vec::new();
+        map.retain(|id, s| {
+            let kept = keep.contains(id);
+            views.extend(s.tabs.iter().filter(|t| !kept || t.external).map(|t| (t.label.clone(), t.external)));
+            kept
+        });
+        views
     };
     for (label, external) in views {
         let _ = close_view(app, &label, external);
     }
     let sessions = app.state::<Sessions>();
-    *sessions.active.lock().map_err(|e| e.to_string())? = String::new();
+    {
+        let mut active = sessions.active.lock().map_err(|e| e.to_string())?;
+        if !keep.contains(&active) {
+            *active = keep.first().cloned().unwrap_or_default();
+        }
+    }
     *sessions.visible.lock().map_err(|e| e.to_string())? = false;
+    refresh_layout(app);
     Ok(())
+}
+
+/// 开了保活的会话
+pub fn keep_alive_ids(app: &AppHandle) -> Vec<String> {
+    let sessions = app.state::<Sessions>();
+    let Ok(map) = sessions.map.lock() else { return Vec::new() };
+    map.iter().filter(|(_, s)| s.keep_alive.is_some()).map(|(id, _)| id.clone()).collect()
 }
 
 /// 账号在磁盘上的登录数据（cookie、LocalStorage、IndexedDB）放在哪：
@@ -1520,7 +1539,7 @@ pub fn any_cut(app: &AppHandle) -> bool {
 }
 
 /// 保活：开了保活、并且 [`KEEP_ALIVE_SECS`] 没人动过的账号，把它的页签按停着的地址重新打开一遍。
-/// 只管已经开着的会话，账号列表里没打开的不碰。
+/// 只管已经开着的会话，账号列表里没打开的不碰。锁定时这些会话留着（藏在锁屏后面），照样刷。
 ///
 /// 为什么是刷新而不是后台发个请求：云账户这类控制台是纯前端单页应用，页面地址由 openresty 静态返回，
 /// 请求它碰不到后端，登录计时一点不动。刷新会让应用重新调一遍接口，服务端的滑动过期和前端自己的

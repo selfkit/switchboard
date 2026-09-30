@@ -316,13 +316,18 @@ fn current_owner(app: AppHandle) -> String {
 /// 锁不锁库都一样能被捡走，加密库里那份快照等于白存。代价是把登录凭证放在 LocalStorage 里的站
 /// 锁一次就得重新登（cookie 登录的站由快照接回来）。锁定、清空、导入备份都走这里。
 /// ⌘Q 退出不经过这条路（见 run() 里的注释），磁盘上的登录数据会留到下次锁定。
-fn lock_down(app: &AppHandle, vault: &State<Vault>) -> Result<(), String> {
+///
+/// `keep_alive` 为真（手动锁定、自动锁定）时，开了保活的会话**不关不抹**，藏在锁屏后面接着刷新：
+/// 保活的意思就是 App 开着就一直在线，锁一下就掉等于没开。这是用户按账号勾的，代价是这几个账号的
+/// 登录数据在锁定期间留在磁盘上。库照样锁上，密钥照样放掉。清空账号库、导入备份、演示模式传 false
+fn lock_down(app: &AppHandle, vault: &State<Vault>, keep_alive: bool) -> Result<(), String> {
     snapshot_cookies(app, None);
+    let kept = if keep_alive { session::keep_alive_ids(app) } else { Vec::new() };
     let ids: Vec<String> = with_conn(vault, db::list_accounts)
-        .map(|v| v.into_iter().map(|a| a.id).collect())
+        .map(|v| v.into_iter().map(|a| a.id).filter(|id| !kept.contains(id)).collect())
         .unwrap_or_default();
     session::purge(app, &ids);
-    session::close_all(app)?;
+    session::close_all(app, &kept)?;
     *vault.0.lock().map_err(|e| e.to_string())? = None;
     // 「仍要继续」只管这一次解锁期间
     if let Ok(mut g) = app.state::<RegionGrace>().0.lock() {
@@ -333,7 +338,8 @@ fn lock_down(app: &AppHandle, vault: &State<Vault>) -> Result<(), String> {
 
 #[tauri::command]
 fn lock(app: AppHandle, vault: State<Vault>) -> Result<(), String> {
-    lock_down(&app, &vault)?;
+    // 演示库的会话不留：锁定即退出演示
+    lock_down(&app, &vault, !demo::on())?;
     // 锁定即退出演示，回到真实账号库的登录页
     demo::set(false);
     Ok(())
@@ -431,6 +437,9 @@ fn enter_demo(app: AppHandle, vault: State<Vault>) -> Result<(), String> {
     if guard.is_some() {
         return Err("先锁定当前账号库，再进演示模式".into());
     }
+    // 锁定时留下的保活会话属于真实账号库，不能带进演示（演示是给别人看的）。趁数据目录还没切走先抹掉
+    let kept = session::keep_alive_ids(&app);
+    session::purge(&app, &kept);
     let port = demo::serve()?;
     demo::set(true);
     let built = (|| {
@@ -574,7 +583,7 @@ fn wipe_vault(app: AppHandle, vault: State<Vault>, password: String) -> Result<(
     }
     drop(db::open_for_unlock(&path, &password).map_err(|_| "主密码不正确".to_string())?);
     // 账号库作废，各账号在磁盘上的登录数据也一起抹掉，不然"清空"之后控制台还登着
-    lock_down(&app, &vault)?;
+    lock_down(&app, &vault, false)?;
     let _ = std::fs::remove_dir_all(data_dir(&app)?.join("profiles"));
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -631,15 +640,22 @@ fn region_settings_from_conn(conn: &Connection) -> (String, Vec<Endpoint>) {
     (mode, endpoints)
 }
 
+/// 最近一次从库里读到的区域检测设置。锁定时保活的会话还开着（见 `lock_down`），哨兵得照用户的设置管它们，
+/// 库锁着读不到，就用这份；从来没读到过才按最保守的 block 算
+static LAST_REGION_SETTINGS: Mutex<Option<(String, Vec<Endpoint>)>> = Mutex::new(None);
+
 fn region_settings(vault: &State<Vault>) -> (String, Vec<Endpoint>) {
-    let guard = match vault.0.lock() {
-        Ok(g) => g,
-        Err(_) => return ("block".into(), region::default_endpoints()),
+    let fallback = || {
+        LAST_REGION_SETTINGS.lock().ok().and_then(|g| g.clone())
+            .unwrap_or_else(|| ("block".into(), region::default_endpoints()))
     };
-    let Some(conn) = guard.as_ref() else {
-        return ("block".into(), region::default_endpoints());
-    };
-    region_settings_from_conn(conn)
+    let Ok(guard) = vault.0.lock() else { return fallback() };
+    let Some(conn) = guard.as_ref() else { return fallback() };
+    let settings = region_settings_from_conn(conn);
+    if let Ok(mut g) = LAST_REGION_SETTINGS.lock() {
+        *g = Some(settings.clone());
+    }
+    settings
 }
 
 fn region_watch_secs(vault: &State<Vault>) -> u64 {
@@ -755,8 +771,10 @@ async fn region_patrol(app: &AppHandle) {
     if mode == "off" {
         return;
     }
-    // 锁着的时候没有任何会话在跑，探了也没东西可处置，白烧请求
-    if app.state::<Vault>().0.lock().map(|g| g.is_none()).unwrap_or(true) {
+    // 锁着又没有页面开着，探了也没东西可处置，白烧请求。
+    // 锁着但有页面开着 = 锁定时留下的保活会话，照样得管：网络变了该断就断
+    let locked = app.state::<Vault>().0.lock().map(|g| g.is_none()).unwrap_or(true);
+    if locked && session::keep_alive_ids(app).is_empty() {
         return;
     }
 
@@ -774,7 +792,10 @@ async fn region_patrol(app: &AppHandle) {
             Err(_) => return,
         };
         let changed = *last != blocked;
-        *last = blocked;
+        // 锁屏上问不了人：翻转留到解锁后那一轮再算，warn 模式才会问到
+        if !locked {
+            *last = blocked;
+        }
         changed
     };
 
@@ -802,7 +823,7 @@ async fn region_patrol(app: &AppHandle) {
     let _ = app.emit_to(
         tauri::EventTarget::labeled("main"),
         "region-changed",
-        RegionEvent { verdict, mode, ask, cut: session::any_cut(app) },
+        RegionEvent { verdict, mode, ask: ask && !locked, cut: session::any_cut(app) },
     );
 }
 
@@ -1122,15 +1143,12 @@ fn set_keep_alive(app: AppHandle, vault: State<Vault>, account_id: String, on: b
     Ok(())
 }
 
-/// 保活的一轮，挂在 cookie 快照线程上跑。
+/// 保活的一轮，挂在 cookie 快照线程上跑。锁着也跑：锁定时保活的会话留着（见 `lock_down`）。
 ///
 /// 网络异常 = 区域检测开着、且最近一次结论要拦。结论最多是一个哨兵周期前的——
 /// 跟区域拦截本身一样，网络在两次巡检之间变了是看不见的
 fn keep_alive_tick(app: &AppHandle) {
     let vault = app.state::<Vault>();
-    if vault.0.lock().map(|g| g.is_none()).unwrap_or(true) {
-        return;
-    }
     let abnormal = region_settings(&vault).0 != "off"
         && app.state::<RegionCache>().0.lock().is_ok_and(|g| g.as_ref().is_some_and(|(v, _)| v.blocked()));
     let n = session::keep_alive(app, abnormal);
@@ -1416,8 +1434,10 @@ fn close_session_tab(app: AppHandle, account_id: String, index: usize) -> Result
 /// App 切到 / 切离「会话」页：账号页面是盖在主窗口上的原生 webview，
 /// 不主动藏起来会一直挡着别的界面。
 #[tauri::command]
-fn set_sessions_visible(app: AppHandle, visible: bool) -> Result<(), String> {
-    session::set_visible(&app, visible)
+fn set_sessions_visible(app: AppHandle, vault: State<Vault>, visible: bool) -> Result<(), String> {
+    // 锁着的时候保活的页面还开着（见 lock_down），前端怎么说都不能露出来盖在锁屏上
+    let unlocked = vault.0.lock().map(|g| g.is_some()).unwrap_or(false);
+    session::set_visible(&app, visible && unlocked)
 }
 
 #[tauri::command]
@@ -1692,7 +1712,7 @@ fn import_backup(
         (db::count_accounts(&probe)?, db::get_meta(&probe, "username").ok())
     };
 
-    lock_down(&app, &vault)?; // 先放开当前库的句柄再覆盖
+    lock_down(&app, &vault, false)?; // 先放开当前库的句柄再覆盖
 
     // 归档名只到分钟，一分钟内导两次会把第一次留下的原库盖掉——那份才是真正的原库
     let stamp = now_string().replace([' ', ':'], "-");
