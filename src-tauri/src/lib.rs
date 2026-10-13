@@ -1,5 +1,6 @@
 mod adapter;
 mod bindings;
+mod context_menu;
 mod db;
 mod demo;
 mod models;
@@ -1851,6 +1852,7 @@ pub fn run() {
         .manage(RegionWatch::default())
         .manage(Activity::default())
         .setup(|app| {
+            context_menu::install();
             let handle = app.handle().clone();
             if cfg!(debug_assertions) {
                 if let Some(w) = handle.get_webview_window("main") {
