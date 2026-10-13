@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime};
 use tauri::webview::cookie::Cookie;
 use tauri::{
     AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Webview, WebviewBuilder, WebviewUrl,
@@ -145,9 +145,11 @@ impl Tab {
     }
 
     /// 保活刷新时要不要刷这一页。被切断的不刷（刷新等于接回去，区域拦截白设）；
-    /// 独立弹窗多是 OAuth 那种走完就关的；没加载完的正在导航，别打断
+    /// 独立弹窗多是 OAuth 那种走完就关的；没加载完的正在导航，别打断。
+    /// 已超时/失败的导航可以重试，否则锁屏时一次短暂断网就会永久停掉保活
     fn keep_alive_target(&self) -> bool {
-        !self.cut && !self.external && !self.download_only && self.loaded.load(Ordering::Relaxed)
+        !self.cut && !self.external && !self.download_only
+            && (self.loaded.load(Ordering::Relaxed) || self.failed())
     }
 }
 
@@ -159,6 +161,23 @@ fn keep_alive_due(setting: Option<bool>, quiet_secs: u64, abnormal: bool) -> boo
     match setting {
         None => false,
         Some(any_network) => (any_network || !abnormal) && quiet_secs >= KEEP_ALIVE_SECS,
+    }
+}
+
+/// macOS 的 Instant 在睡眠期间不走；唤醒后要把睡眠时间算进去，及时补一轮刷新。
+/// 同时保留单调钟，避免系统时间被往回拨时延后保活。
+pub struct KeepAliveClock {
+    mono: Instant,
+    wall: SystemTime,
+}
+
+impl KeepAliveClock {
+    fn now() -> Self {
+        Self { mono: Instant::now(), wall: SystemTime::now() }
+    }
+
+    fn elapsed(&self) -> Duration {
+        self.mono.elapsed().max(self.wall.elapsed().unwrap_or_default())
     }
 }
 
@@ -176,7 +195,7 @@ pub struct SessionState {
     /// 保活设置：None = 不保活；Some(true) = 网络异常时也保活。存在库的 meta 里，开页面时带进来
     pub keep_alive: Option<bool>,
     /// 这个账号最近一次有动静：用户在它的页面里操作过，或者保活刚刷过它
-    pub alive_at: Instant,
+    pub alive_at: KeepAliveClock,
 }
 
 impl SessionState {
@@ -740,6 +759,10 @@ fn build_tab(
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(blank))
         .data_directory(profile_dir(app, account_id)?)
         .data_store_identifier(store_identifier(account_id))
+        // 锁库和切换账号都会 hide 页面；默认暂停策略会冻结隐藏页面的 JS / 请求。
+        // 在创建时关闭它，让运行中的账号能随时勾选保活而不用重建、丢失登录态。
+        // 主窗口仍用默认策略；只有勾了保活的账号会定时刷新、在锁库时保留。
+        .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         // 常驻：填充 / 指认 / 记住最后点过的输入框，全靠它。
         // 必须**每个 frame 都注入**——阿里云腾讯云这类站的登录框在跨域 iframe 里，
         // 只注主文档的话点击记不到、指认点不中、自动填充也找不到框
@@ -1147,13 +1170,14 @@ pub fn open_or_focus(
                 },
                 opened_at: Instant::now(),
                 keep_alive,
-                alive_at: Instant::now(),
+                alive_at: KeepAliveClock::now(),
             },
         );
     }
 
     *sessions.active.lock().map_err(|e| e.to_string())? = account.id.clone();
     *sessions.visible.lock().map_err(|e| e.to_string())? = true;
+    crate::power::sync(app);
     refresh_layout(app);
     Ok(())
 }
@@ -1230,6 +1254,7 @@ pub fn close(app: &AppHandle, account_id: &str) -> Result<(), String> {
             None => return Ok(()),
         }
     };
+    crate::power::sync(app);
     for (label, external) in views {
         close_view(app, &label, external)?;
     }
@@ -1251,14 +1276,9 @@ pub fn close_all(app: &AppHandle, keep: &[String]) -> Result<(), String> {
     let views: Vec<(String, bool)> = {
         let sessions = app.state::<Sessions>();
         let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
-        let mut views = Vec::new();
-        map.retain(|id, s| {
-            let kept = keep.contains(id);
-            views.extend(s.tabs.iter().filter(|t| !kept || t.external).map(|t| (t.label.clone(), t.external)));
-            kept
-        });
-        views
+        take_closing_views(&mut map, keep)
     };
+    crate::power::sync(app);
     for (label, external) in views {
         let _ = close_view(app, &label, external);
     }
@@ -1272,6 +1292,25 @@ pub fn close_all(app: &AppHandle, keep: &[String]) -> Result<(), String> {
     *sessions.visible.lock().map_err(|e| e.to_string())? = false;
     refresh_layout(app);
     Ok(())
+}
+
+fn take_closing_views(map: &mut HashMap<String, SessionState>, keep: &[String]) -> Vec<(String, bool)> {
+    let mut views = Vec::new();
+    map.retain(|id, s| {
+        if !keep.contains(id) {
+            views.extend(s.tabs.iter().map(|t| (t.label.clone(), t.external)));
+            return false;
+        }
+        // 当场摘掉独立弹窗，不依赖异步 Destroyed 回调，否则解锁后会残留失效页签。
+        let active = s.active().label.clone();
+        s.tabs.retain(|t| {
+            if t.external { views.push((t.label.clone(), true)); }
+            !t.external
+        });
+        s.active_tab = s.tabs.iter().position(|t| t.label == active).unwrap_or(0);
+        true
+    });
+    views
 }
 
 /// 开了保活的会话
@@ -1570,15 +1609,15 @@ pub fn any_cut(app: &AppHandle) -> bool {
 /// 返回刷了几个页签
 pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
     let sessions = app.state::<Sessions>();
-    let labels: Vec<String> = {
+    let labels: Vec<(String, bool)> = {
         let Ok(mut map) = sessions.map.lock() else { return 0 };
         let mut labels = Vec::new();
         for s in map.values_mut() {
             if !keep_alive_due(s.keep_alive, s.alive_at.elapsed().as_secs(), abnormal) {
                 continue;
             }
-            s.alive_at = Instant::now();
-            labels.extend(s.tabs.iter().filter(|t| t.keep_alive_target()).map(|t| t.label.clone()));
+            s.alive_at = KeepAliveClock::now();
+            labels.extend(s.tabs.iter().filter(|t| t.keep_alive_target()).map(|t| (t.label.clone(), t.url_is_safe())));
         }
         labels
     };
@@ -1586,12 +1625,12 @@ pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
         return 0;
     }
     // 单页应用（云账户就是）站内换页不整页加载，last_url 还停在刚进来那一页，刷回那里等于把人踢回首页，
-    // 所以问 WKWebView 要现在的地址。挑出来的都加载过，问它是安全的（见 url_is_safe）；
-    // 它要派发回事件循环线程等回话，所以**不能拿着锁问**
+    // 所以问 WKWebView 要现在的地址。超时的页签 URL 可能是 nil，只能退回 last_url；
+    // 已加载的要派发回事件循环线程等回话，所以**不能拿着锁问**
     let now: Vec<(String, Option<tauri::Url>)> = labels
         .into_iter()
-        .map(|l| {
-            let url = app.get_webview(&l).and_then(|v| v.url().ok());
+        .map(|(l, safe)| {
+            let url = if safe { app.get_webview(&l).and_then(|v| v.url().ok()) } else { None };
             (l, url)
         })
         .collect();
@@ -1600,7 +1639,10 @@ pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
     {
         let Ok(mut map) = sessions.map.lock() else { return 0 };
         for (label, url) in now {
-            let Some(t) = map.values_mut().find_map(|s| s.tab_of(&label)) else { continue };
+            let Some(s) = map.values_mut().find(|s| s.tabs.iter().any(|t| t.label == label)) else { continue };
+            // 取 URL 期间用户可能关闭了保活或撤掉异常网络豁免。
+            if !keep_alive_due(s.keep_alive, KEEP_ALIVE_SECS, abnormal) { continue; }
+            let Some(t) = s.tab_of(&label) else { continue };
             if !t.keep_alive_target() {
                 continue;
             }
@@ -1624,7 +1666,7 @@ pub fn mark_input(app: &AppHandle, label: &str) {
     let sessions = app.state::<Sessions>();
     let Ok(mut map) = sessions.map.lock() else { return };
     if let Some(s) = map.values_mut().find(|s| s.tabs.iter().any(|t| t.label == label)) {
-        s.alive_at = Instant::now();
+        s.alive_at = KeepAliveClock::now();
     }
 }
 
@@ -1636,7 +1678,9 @@ pub fn set_keep_alive(app: &AppHandle, account_id: &str, setting: Option<bool>) 
     let Some(s) = map.get_mut(account_id) else { return false };
     let was = s.region_exempt();
     s.keep_alive = setting;
-    s.alive_at = Instant::now(); // 开了很久的页面，刚勾上别当场就刷
+    s.alive_at = KeepAliveClock::now(); // 开了很久的页面，刚勾上别当场就刷
+    drop(map);
+    crate::power::sync(app);
     was
 }
 
@@ -1910,7 +1954,7 @@ mod tests {
             related_app: String::new(),
             opened_at: Instant::now(),
             keep_alive: None,
-            alive_at: Instant::now(),
+            alive_at: KeepAliveClock::now(),
         };
         assert!(s.cuttable());
         s.keep_alive = Some(false);
@@ -1925,7 +1969,11 @@ mod tests {
     #[test]
     fn keep_alive_skips_cut_popup_download_and_loading_tabs() {
         assert!(tab("ok", true, false, None).keep_alive_target());
-        assert!(!tab("loading", false, false, None).keep_alive_target(), "正在导航的别打断");
+        let mut loading = tab("loading", false, false, None);
+        assert!(loading.keep_alive_target(), "超时后要重试，不能因一次断网永久停掉保活");
+        assert!(!loading.url_is_safe(), "超时的 WebKit URL 可能是 nil，不能读取");
+        loading.nav_at = Instant::now();
+        assert!(!loading.keep_alive_target(), "正在导航的别打断");
         assert!(!tab("popup", true, true, None).keep_alive_target(), "独立弹窗不刷");
         let mut cut = tab("cut", true, false, None);
         cut.cut = true;
@@ -1933,6 +1981,46 @@ mod tests {
         let mut dl = tab("dl", true, false, None);
         dl.download_only = true;
         assert!(!dl.keep_alive_target());
+    }
+
+    #[test]
+    fn keep_alive_counts_sleep_and_survives_clock_changes() {
+        let mut clock = KeepAliveClock {
+            mono: Instant::now(),
+            wall: SystemTime::now() - Duration::from_secs(3600),
+        };
+        assert!(keep_alive_due(Some(false), clock.elapsed().as_secs(), false), "睡醒后立刻到期");
+        clock.mono = Instant::now() - Duration::from_secs(KEEP_ALIVE_SECS);
+        clock.wall = SystemTime::now() + Duration::from_secs(3600);
+        assert!(keep_alive_due(Some(false), clock.elapsed().as_secs(), false), "回拨时钟也不能延后");
+    }
+
+    #[test]
+    fn locking_preserves_only_selected_sessions_and_removes_their_popups() {
+        let session = |keep_alive| SessionState {
+            tabs: vec![tab("main", true, false, None), tab("popup", true, true, None), tab("second", true, false, None)],
+            active_tab: 2,
+            next_seq: 3,
+            platform: String::new(),
+            related_app: String::new(),
+            opened_at: Instant::now(),
+            keep_alive,
+            alive_at: KeepAliveClock::now(),
+        };
+        let kept = session(Some(false));
+        let original_page = kept.tabs[0].loaded.clone();
+        let mut map = HashMap::from([("kept".into(), kept), ("closed".into(), session(None))]);
+        let closing = take_closing_views(&mut map, &["kept".into()]);
+        assert_eq!(closing.len(), 4, "普通会话的全部页面、保活会话的弹窗都关闭");
+        assert_eq!(map.len(), 1);
+        let kept = &map["kept"];
+        assert_eq!(kept.tabs.len(), 2);
+        assert_eq!(kept.active().label, "second");
+        assert!(Arc::ptr_eq(&kept.tabs[0].loaded, &original_page), "保活页面原样保留，不重建");
+        assert!(kept.tabs.iter().all(|t| t.keep_alive_target()));
+        assert!(take_closing_views(&mut map, &["kept".into()]).is_empty(), "重复锁定也不能关闭保活页面");
+        assert_eq!(take_closing_views(&mut map, &[]).len(), 2, "清空库/导入备份时全部关闭");
+        assert!(map.is_empty());
     }
 
     #[test]
@@ -1967,7 +2055,7 @@ mod tests {
             related_app: String::new(),
             opened_at: Instant::now(),
             keep_alive: None,
-            alive_at: Instant::now(),
+            alive_at: KeepAliveClock::now(),
         };
         assert!(s.tabs[2].failed(), "不处理的话：没加载过的新页签超时就判成打不开");
         assert!(s.mark_download_only("t2"));

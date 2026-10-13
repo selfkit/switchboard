@@ -382,11 +382,11 @@ export default function SessionsPage({
                   {currentInfo && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: C.sub }}>
                       <label
-                        title={`页面开着时，这个账号 3 分钟没操作就自动刷新一次，免得登录过期；没提交的表单会丢。网络异常（区域检测判为要拦）时暂停`}
+                        title="这个账号约 3 分钟没操作就自动刷新，没提交的表单会丢。锁屏和安全锁定后继续保活，直到关闭会话或取消勾选；期间阻止电脑空闲睡眠，仍可熄屏。合盖、主动睡眠、断网或网站强制过期仍可能需要重新登录。网络异常（区域检测判为要拦）时暂停"
                         style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
                       >
                         <input type="checkbox" checked={currentInfo.keep_alive} onChange={(e) => keepAlive(a.id, e.target.checked, false)} style={{ accentColor: C.brand, margin: 0 }} />
-                        保活（没操作就定时刷新）
+                        保活（锁屏后继续）
                       </label>
                       {currentInfo.keep_alive && (
                         <label

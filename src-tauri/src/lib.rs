@@ -2,6 +2,7 @@ mod adapter;
 mod db;
 mod demo;
 mod models;
+mod power;
 mod region;
 mod session;
 mod totp;
@@ -1155,7 +1156,7 @@ fn set_keep_alive(app: AppHandle, vault: State<Vault>, account_id: String, on: b
     Ok(())
 }
 
-/// 保活的一轮，挂在 cookie 快照线程上跑。锁着也跑：锁定时保活的会话留着（见 `lock_down`）。
+/// 保活的一轮，独立于 cookie 快照运行。锁着也跑：锁定时保活的会话留着（见 `lock_down`）。
 ///
 /// 网络异常 = 区域检测开着、且最近一次结论要拦。结论最多是一个哨兵周期前的——
 /// 跟区域拦截本身一样，网络在两次巡检之间变了是看不见的
@@ -1163,30 +1164,11 @@ fn keep_alive_tick(app: &AppHandle) {
     let vault = app.state::<Vault>();
     let abnormal = region_settings(&vault).0 != "off"
         && app.state::<RegionCache>().0.lock().is_ok_and(|g| g.as_ref().is_some_and(|(v, _)| v.blocked()));
-    #[cfg(target_os = "macos")]
-    if !session::keep_alive_ids(app).is_empty() {
-        no_app_nap();
-    }
+    power::sync(app);
     let n = session::keep_alive(app, abnormal);
     if n > 0 {
         eprintln!("[switchboard] 保活：刷新了 {n} 个页签");
     }
-}
-
-/// 关掉 App Nap。窗口被挡住、最小化之后 macOS 会让 App 打盹、推迟它的定时器，
-/// 保活那条两分钟一轮的线程可能被拖到登录早过期了才轮到。只关打盹，系统空闲睡眠照常（睡了就没法保活）
-// ponytail: 一旦开过保活就不打盹直到退出，关掉保活也不恢复；在乎这点电量再按有没有保活会话 begin/end
-#[cfg(target_os = "macos")]
-fn no_app_nap() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        use objc2_foundation::{NSActivityOptions, NSProcessInfo, NSString};
-        let token = NSProcessInfo::processInfo().beginActivityWithOptions_reason(
-            NSActivityOptions::UserInitiatedAllowingIdleSystemSleep,
-            &NSString::from_str("保活：定时刷新账号页面"),
-        );
-        std::mem::forget(token); // token 一释放活动就结束，留到退出
-    });
 }
 
 #[tauri::command]
@@ -1845,8 +1827,14 @@ pub fn run() {
                     eprintln!("[switchboard] 快照定时器心跳");
                 }
                 snapshot_cookies(&handle, None);
-                // 保活也挂在这条线程上：窗口最小化、切到别的 App、停在账号列表页都照跑
-                keep_alive_tick(&handle);
+            });
+
+            // 保活单独计时，避免 120 秒的快照周期把 3 分钟刷新拖成 4 分钟，
+            // 也避免 WebKit 读取 cookie 较慢时连带阻塞保活。锁库不停止这条线程。
+            let alive = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(15));
+                keep_alive_tick(&alive);
             });
 
             // 区域哨兵：网络是会中途变的（VPN 自动重连、分流规则切换、换 Wi-Fi），
