@@ -37,7 +37,7 @@ pub fn agent_js() -> &'static str {
   var lastAt = 0;       // 点它的时间。好几帧都记着"最后点过的框"时，靠它挑最近的那帧
   var waiting = null;   // 已认领、正等主文档把值发下来的元素
   var picking = false, picked = [], badges = [], tip = null;
-  var seq = 0, jobs = {}, pickTimer = 0;
+  var seq = 0, jobs = {}, pickTimer = 0, autoTimers = [];
 
   // Shadow DOM 里 e.target 是宿主元素，composedPath()[0] 才是真正被点的那个
   function hit(e) {
@@ -466,6 +466,11 @@ pub fn agent_js() -> &'static str {
 
   window.__sb = {
     find: openFind,
+    stopAutofill: function () {
+      autoTimers.forEach(clearInterval); autoTimers = [];
+      Object.keys(jobs).forEach(function (id) { clearTimeout(jobs[id].timer); delete jobs[id]; });
+      waiting = null;
+    },
     // 填到"用户最后点过的那个框"——不依赖任何选择器的兜底
     fill: function (value, what) {
       ask({ kind: 'focused' }, [value], what, true, null, function () {
@@ -481,6 +486,7 @@ pub fn agent_js() -> &'static str {
           clearInterval(timer);
         }, null);
       }, 250);
+      autoTimers.push(timer);
     },
     pick: function (on) {
       clearInterval(pickTimer);

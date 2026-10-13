@@ -1,4 +1,5 @@
 mod adapter;
+mod bindings;
 mod db;
 mod demo;
 mod models;
@@ -322,6 +323,7 @@ fn current_owner(app: AppHandle) -> String {
 /// 保活的意思就是 App 开着就一直在线，锁一下就掉等于没开。这是用户按账号勾的，代价是这几个账号的
 /// 登录数据在锁定期间留在磁盘上。库照样锁上，密钥照样放掉。清空账号库、导入备份、演示模式传 false
 fn lock_down(app: &AppHandle, vault: &State<Vault>, keep_alive: bool) -> Result<(), String> {
+    bindings::cancel_all(app);
     snapshot_cookies(app, None);
     let kept = if keep_alive { session::keep_alive_ids(app) } else { Vec::new() };
     let ids: Vec<String> = with_conn(vault, db::list_accounts)
@@ -990,7 +992,7 @@ fn unmask(conn: &Connection, a: &mut Account) -> Result<(), String> {
         a.totp_secret = old.totp_secret;
     }
     for f in a.extra_fields.iter_mut().filter(|f| f.value == MASK) {
-        f.value = old.extra_fields.iter().find(|o| o.label == f.label).map(|o| o.value.clone()).ok_or(redo)?;
+        f.value = old.extra_fields.iter().find(|o| !f.id.is_empty() && o.id == f.id).map(|o| o.value.clone()).ok_or(redo)?;
     }
     Ok(())
 }
@@ -1043,6 +1045,7 @@ fn config_for(conn: &Connection, a: &Account) -> Result<Option<PlatformConfig>, 
 pub fn autofill_for(app: &AppHandle, account_id: &str) -> Option<(tauri::Url, String)> {
     let vault = app.try_state::<Vault>()?;
     let (a, cfg) = with_conn(&vault, |c| {
+        if bindings::enabled(c, account_id) { return Err("此账号使用字段绑定".into()); }
         let a = db::get_account(c, account_id)?;
         let cfg = config_for(c, &a)?;
         Ok((a, cfg))
@@ -1051,6 +1054,44 @@ pub fn autofill_for(app: &AppHandle, account_id: &str) -> Option<(tauri::Url, St
     let cfg = cfg.filter(|c| c.trigger_event != "skip" && !c.username_selector.is_empty() && !c.password_selector.is_empty())?;
     let login = a.login_url.trim().parse().ok()?;
     Some((login, adapter::fill_js(&cfg, &a.username, &a.credential)))
+}
+
+// ----------------------------------------------------------- 输入框与字段绑定
+
+#[tauri::command]
+fn binding_state(app: AppHandle, account_id: String, tab_label: String) -> Result<bindings::StateView, String> {
+    bindings::state(&app, &account_id, &tab_label)
+}
+#[tauri::command]
+fn begin_binding_pick(app: AppHandle, account_id: String, tab_label: String) -> Result<(), String> {
+    bindings::pick(&app, &account_id, &tab_label)
+}
+#[tauri::command]
+fn cancel_binding_work(app: AppHandle, account_id: String, tab_label: String) -> Result<(), String> {
+    with_conn(&app.state::<Vault>(), |_| Ok(()))?;
+    session::binding_context(&app, &account_id, &tab_label, false)?;
+    bindings::cancel(&app, &tab_label, "cancelled");
+    Ok(())
+}
+#[tauri::command]
+fn save_field_binding(app: AppHandle, account_id: String, tab_label: String, input: bindings::Save) -> Result<String, String> {
+    bindings::save(&app, &account_id, &tab_label, input)
+}
+#[tauri::command]
+fn delete_field_binding(app: AppHandle, account_id: String, binding_id: String) -> Result<(), String> {
+    bindings::remove(&app, &account_id, &binding_id)
+}
+#[tauri::command]
+fn set_binding_mode(app: AppHandle, account_id: String, enabled: bool) -> Result<(), String> {
+    bindings::mode(&app, &account_id, enabled)
+}
+#[tauri::command]
+fn run_field_bindings(app: AppHandle, account_id: String, tab_label: String, binding_id: Option<String>, overwrite: bool) -> Result<String, String> {
+    bindings::start(&app, &account_id, &tab_label, binding_id, overwrite, false)
+}
+#[tauri::command]
+fn report_binding_event(app: AppHandle, webview: tauri::Webview, event: bindings::Event) -> Result<(), String> {
+    bindings::report(&app, &webview, event)
 }
 
 // ---------------------------------------------------------------- 会话
@@ -1589,6 +1630,9 @@ fn import_platform_configs(vault: State<Vault>, json: String) -> Result<usize, S
 /// 进入/退出"手动指认输入框"模式。
 #[tauri::command]
 fn set_pick_mode(app: AppHandle, account_id: String, on: bool) -> Result<(), String> {
+    if on && with_conn(&app.state::<Vault>(), |c| Ok(bindings::enabled(c, &account_id)))? {
+        return Err("此账号已使用字段绑定，请在“输入框绑定”中指认；使用旧版前需关闭字段绑定模式".into());
+    }
     session::set_picking(&app, &account_id, on)
 }
 
@@ -1800,6 +1844,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(Vault::default())
         .manage(session::Sessions::default())
+        .manage(bindings::Bindings::default())
         .manage(RegionCache::default())
         .manage(RegionGuard::default())
         .manage(RegionGrace::default())
@@ -1914,6 +1959,14 @@ pub fn run() {
             delete_platform_config,
             set_pick_mode,
             report_picked_selectors,
+            binding_state,
+            begin_binding_pick,
+            cancel_binding_work,
+            save_field_binding,
+            delete_field_binding,
+            set_binding_mode,
+            run_field_bindings,
+            report_binding_event,
             totp_code,
             totp_secret_from,
             totp_preview,
@@ -1978,7 +2031,7 @@ mod tests {
             "id": "a1", "platform": "阿里云", "owner_type": "", "related_app": "", "account_role": "",
             "login_url": "", "username": "u", "credential": "真密码", "totp_secret": "JBSWY3DPEHPK3PXP",
             "backup_contact": "", "remark": "",
-            "extra_fields": [{"label": "AK", "value": "ak-secret", "secret": true}, {"label": "邮箱", "value": "a@b.c", "secret": false}]
+            "extra_fields": [{"id": "field-ak", "label": "AK", "value": "ak-secret", "secret": true}, {"id": "field-email", "label": "邮箱", "value": "a@b.c", "secret": false}]
         }))
         .unwrap();
         crate::db::save_account(&conn, &real).unwrap();
@@ -1989,9 +2042,11 @@ mod tests {
         assert_eq!(shown.extra_fields[1].value, "a@b.c", "不敏感的照常显示");
 
         shown.remark = "改了备注".into();
+        shown.extra_fields[0].label = "改名后的 AK".into();
+        shown.extra_fields.reverse();
         unmask(&conn, &mut shown).unwrap();
         assert_eq!(shown.credential, "真密码");
-        assert_eq!(shown.extra_fields[0].value, "ak-secret");
+        assert_eq!(shown.extra_fields[1].value, "ak-secret");
 
         let mut stranger = masked(real);
         stranger.id = "new-id".into();

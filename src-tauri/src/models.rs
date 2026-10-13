@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 /// 账号之外的可填信息，如邮箱、应用 ID、主体名称。跟账号一起存在加密库中。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExtraField {
+    #[serde(default)]
+    pub id: String,
     pub label: String,
     pub value: String,
     #[serde(default)]
@@ -51,6 +53,7 @@ fn default_trigger() -> String {
 /// 一个页签的状态，给前端画页签条用。
 #[derive(Debug, Clone, Serialize)]
 pub struct TabInfo {
+    pub label: String,
     /// 页面标题，空的时候前端退回显示地址
     pub title: String,
     pub url: String,

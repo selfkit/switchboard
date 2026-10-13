@@ -279,7 +279,7 @@ export default function App() {
       const full = await api.getAccount(a.id);
       setScreen(
         duplicate
-          ? { name: "form", account: { ...full, id: crypto.randomUUID() }, isNew: true, copiedFrom: full.related_app || full.username, back }
+          ? { name: "form", account: { ...full, id: crypto.randomUUID(), extra_fields: full.extra_fields.map((f) => ({ ...f, id: crypto.randomUUID() })) }, isNew: true, copiedFrom: full.related_app || full.username, back }
           : { name: "form", account: full, isNew: false, back },
       );
     });

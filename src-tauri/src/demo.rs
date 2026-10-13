@@ -103,8 +103,8 @@ pub fn accounts(port: u16) -> Vec<Account> {
             remark: remark.into(),
             extra_fields: if n == 1 {
                 vec![
-                    ExtraField { label: "企业主体".into(), value: "星河科技有限公司（演示）".into(), secret: false },
-                    ExtraField { label: "AccessKey Secret".into(), value: "demo-ak-secret-0000".into(), secret: true },
+                    ExtraField { id: uuid::Uuid::new_v4().to_string(), label: "企业主体".into(), value: "星河科技有限公司（演示）".into(), secret: false },
+                    ExtraField { id: uuid::Uuid::new_v4().to_string(), label: "AccessKey Secret".into(), value: "demo-ak-secret-0000".into(), secret: true },
                 ]
             } else {
                 vec![]

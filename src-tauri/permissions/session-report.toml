@@ -10,4 +10,6 @@
 [[permission]]
 identifier = "allow-session-report"
 description = "允许账号登录页回传指认到的选择器、页面加载结果和活动心跳"
-commands.allow = ["report_picked_selectors", "report_page_state", "touch_activity"]
+commands.allow = ["report_picked_selectors", "report_page_state", "touch_activity", "report_binding_event"]
+
+# report_binding_event：仅回传文档、指认与执行结果；不向远端返回凭据。

@@ -705,7 +705,7 @@ fn same_host(login: &tauri::Url, page: &tauri::Url) -> bool {
 /// 同站而不是同源：`account.aliyun.com` 跳 `signin.aliyun.com` 这种正常流程得留着；
 /// 协议也要一致，https 登录页的密码不往 http 页里填。
 /// IP 和单段主机名（自建的宝塔/Graylog）没有"站"的概念，要求协议+主机+端口完全一致。
-fn fill_allowed(login: &tauri::Url, page: &tauri::Url) -> bool {
+pub(crate) fn fill_allowed(login: &tauri::Url, page: &tauri::Url) -> bool {
     if login.scheme() != page.scheme() {
         return false;
     }
@@ -767,6 +767,7 @@ fn build_tab(
         // 必须**每个 frame 都注入**——阿里云腾讯云这类站的登录框在跨域 iframe 里，
         // 只注主文档的话点击记不到、指认点不中、自动填充也找不到框
         .initialization_script_for_all_frames(adapter::agent_js())
+        .initialization_script_for_all_frames(crate::bindings::AGENT)
         // Tauri 默认给每个 webview 装自己的拖放接收器，OS 的拖放事件被它接走，
         // 页面里的 dragenter/dragover/drop 根本不触发——备案页那种"拖拽到此区域"
         // 于是永远没反应。我们不用 Tauri 的 DragDrop 事件，关掉，把拖放还给页面。
@@ -809,7 +810,9 @@ fn build_tab(
                 return;
             }
             if payload.event() != tauri::webview::PageLoadEvent::Finished {
+                loaded_cb.store(false, Ordering::Relaxed);
                 committed_cb.store(true, Ordering::Relaxed);
+                crate::bindings::navigation(webview.app_handle(), webview.label());
                 return;
             }
             if let Ok(mut u) = last_url_cb.lock() {
@@ -819,6 +822,7 @@ fn build_tab(
             seen_cb.store(true, Ordering::Relaxed);
             // 导航"完成"不等于页面能用：4xx/5xx 也是完成。让页面自己回报一次
             let _ = webview.eval(adapter::page_probe_js());
+            let _ = webview.eval("window.__sbBindings && window.__sbBindings.hello();");
             let armed = fill_armed_cb.lock().map(|t| t.elapsed().as_secs() < FILL_WINDOW_SECS).unwrap_or(false);
             if autofill && armed {
                 // 每次现取：页面开着的时候账号密码、平台选择器都可能被改过（编辑账号、指认输入框）
@@ -832,6 +836,7 @@ fn build_tab(
 
     let view = win.add_child(builder, pos, size).map_err(|e| e.to_string())?;
     restore_cookies(&view, cookies);
+    crate::bindings::arm(app, &label);
     view.navigate(target).map_err(|e| e.to_string())?;
 
     Ok(Tab {
@@ -1116,6 +1121,7 @@ pub fn close_tab(app: &AppHandle, account_id: &str, index: usize) -> Result<(), 
 
 /// 关掉一个页签背后的东西。弹窗要关**窗口**——只关 webview 会剩下一个空窗框。
 fn close_view(app: &AppHandle, label: &str, external: bool) -> Result<(), String> {
+    crate::bindings::forget(app, label);
     if external {
         if let Some(w) = app.get_webview_window(label) {
             w.close().map_err(|e| e.to_string())?;
@@ -1216,6 +1222,7 @@ pub fn list(app: &AppHandle) -> Result<Vec<SessionInfo>, String> {
                     .tabs
                     .iter()
                     .map(|t| TabInfo {
+                        label: t.label.clone(),
                         title: t.title.lock().map(|x| x.clone()).unwrap_or_default(),
                         url: t.last_url.lock().map(|x| x.clone()).unwrap_or_default(),
                         loaded: t.loaded.load(Ordering::Relaxed),
@@ -1538,6 +1545,7 @@ pub fn cut_all(app: &AppHandle) -> usize {
         }
         let Some(v) = app.get_webview(&t.label) else { continue };
         let Ok(blank) = "about:blank".parse() else { continue };
+        crate::bindings::disarm(app, &t.label);
         if v.navigate(blank).is_ok() {
             t.cut = true;
             t.loaded.store(false, Ordering::Relaxed);
@@ -1649,6 +1657,7 @@ pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
             let last = t.last_url.lock().map(|u| u.clone()).unwrap_or_default();
             let Some(target) = url.filter(|u| u.scheme() != "about").or_else(|| last.parse().ok()) else { continue };
             let Some(v) = app.get_webview(&label) else { continue };
+            crate::bindings::disarm(app, &label);
             t.renav();
             if v.navigate(target).is_ok() {
                 n += 1;
@@ -1720,6 +1729,7 @@ pub fn reload(app: &AppHandle, account_id: &str, url: &str) -> Result<(), String
         if own.trim().is_empty() { url.trim().to_string() } else { own }
     };
     let parsed = target.parse().map_err(|_| format!("地址不合法：{target}"))?;
+    crate::bindings::arm(app, v.label());
     v.navigate(parsed).map_err(|e| e.to_string())?;
     refresh_layout(app);
     Ok(())
@@ -1772,6 +1782,25 @@ pub fn picking_account(app: &AppHandle, label: &str) -> Option<String> {
     map.iter()
         .find(|(_, s)| s.tabs.iter().any(|t| t.picking && t.label == label))
         .map(|(id, _)| id.clone())
+}
+
+/// 绑定命令始终指定账号和稳定页签标识，切换焦点不会改变执行目标。
+pub fn binding_context(app: &AppHandle, account: &str, label: &str, ready: bool) -> Result<tauri::Url, String> {
+    let sessions = app.state::<Sessions>();
+    let map = sessions.map.lock().map_err(|e| e.to_string())?;
+    let t = map.get(account).and_then(|s| s.tabs.iter().find(|t| t.label == label)).ok_or("页签已关闭")?;
+    if t.external { return Err("独立弹窗暂不支持字段绑定".into()); }
+    if t.cut { return Err(CUT_MSG.into()); }
+    if ready && (!t.loaded.load(Ordering::Relaxed) || t.failed()) { return Err("页面尚未就绪".into()); }
+    let url: tauri::Url = t.last_url.lock().map_err(|e|e.to_string())?.parse().map_err(|_| "页面地址无效")?;
+    if !matches!(url.scheme(), "http" | "https") { return Err("不支持此页面".into()); }
+    Ok(url)
+}
+pub fn binding_labels(app: &AppHandle, account: &str) -> Vec<String> {
+    app.state::<Sessions>().map.lock().ok().and_then(|m|m.get(account).map(|s|s.tabs.iter().map(|t|t.label.clone()).collect())).unwrap_or_default()
+}
+pub fn binding_account(app: &AppHandle, label: &str) -> Option<String> {
+    app.state::<Sessions>().map.lock().ok()?.iter().find(|(_,s)|s.tabs.iter().any(|t|t.label==label)).map(|(id,_)|id.clone())
 }
 
 #[cfg(test)]

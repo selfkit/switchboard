@@ -198,11 +198,11 @@ export default function AccountForm({ initial, isNew, copiedFrom, accounts, onSa
         <Section
           title="附加字段"
           desc="邮箱、应用 ID、主体等；会话页可一键填入网页输入框"
-          action={<Button onClick={() => setA((prev) => ({ ...prev, extra_fields: [...prev.extra_fields, { label: "", value: "", secret: false }] }))}>+ 添加字段</Button>}
+          action={<Button onClick={() => setA((prev) => ({ ...prev, extra_fields: [...prev.extra_fields, { id: crypto.randomUUID(), label: "", value: "", secret: false }] }))}>+ 添加字段</Button>}
         >
           {a.extra_fields.length === 0 && <div style={{ fontSize: 12, color: C.muted }}>还没有附加字段</div>}
           {a.extra_fields.map((field, index) => (
-            <div key={index} style={{ display: "grid", gridTemplateColumns: "minmax(100px, 1fr) minmax(140px, 2fr) auto auto", alignItems: "center", gap: 8 }}>
+            <div key={field.id} style={{ display: "grid", gridTemplateColumns: "minmax(100px, 1fr) minmax(140px, 2fr) auto auto", alignItems: "center", gap: 8 }}>
               <input style={inputStyle} placeholder="名称，例如：邮箱" value={field.label} onChange={(e) => updateExtra(index, { label: e.target.value })} />
               <input style={inputStyle} type={field.secret ? "password" : "text"} placeholder="内容" value={field.value} onChange={(e) => updateExtra(index, { value: e.target.value })} />
               <label style={{ color: C.sub, fontSize: 12, display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>

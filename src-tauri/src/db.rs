@@ -35,7 +35,28 @@ pub fn open_for_unlock(path: &Path, password: &str) -> Result<Connection, String
 
 pub fn prepare(conn: &Connection) -> Result<(), String> {
     init(conn)?;
+    migrate_extra_ids(conn)?;
     seed_platform_configs(conn)
+}
+
+fn migrate_extra_ids(conn: &Connection) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for mut a in list_accounts(&tx)? {
+        let mut seen = std::collections::HashSet::new();
+        let mut changed = false;
+        for f in &mut a.extra_fields {
+            if f.id.is_empty() || !seen.insert(f.id.clone()) {
+                f.id = uuid::Uuid::new_v4().to_string();
+                seen.insert(f.id.clone());
+                changed = true;
+            }
+        }
+        if changed {
+            let json = serde_json::to_string(&a.extra_fields).map_err(|e| e.to_string())?;
+            tx.execute("UPDATE accounts SET extra_fields=?1 WHERE id=?2", params![json, a.id]).map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// 修改主密码：SQLCipher 用新 key 重新加密整库。
@@ -76,6 +97,14 @@ fn init(conn: &Connection) -> Result<(), String> {
             trigger_event     TEXT,
             verified          INTEGER,
             updated_at        TEXT
+         );
+         CREATE TABLE IF NOT EXISTS field_bindings (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            config TEXT NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS binding_accounts (
+            account_id TEXT PRIMARY KEY
          );",
     )
     .map_err(|e| e.to_string())?;
@@ -312,6 +341,16 @@ pub fn count_accounts(conn: &Connection) -> Result<usize, String> {
 /// 顺手给这个平台建一条空的适配配置——平台是用户可以自由输入的，
 /// 不这么做的话新平台在「平台适配配置」页里根本不出现，没法去配选择器。
 pub fn save_account(conn: &Connection, a: &Account) -> Result<(), String> {
+    let mut ids = std::collections::HashSet::new();
+    if a.extra_fields.iter().any(|f| f.id.is_empty() || f.id.len() > 128 || !ids.insert(&f.id)) {
+        return Err("附加字段 ID 缺失或重复，请重新打开编辑页".into());
+    }
+    // 不能把另一个账号的字段 ID 带过来。复制新建时前端生成新的 ID。
+    for other in list_accounts(conn)?.into_iter().filter(|other| other.id != a.id) {
+        if other.extra_fields.iter().any(|f| ids.contains(&f.id)) {
+            return Err("附加字段属于另一个账号，请重新复制新建".into());
+        }
+    }
     let extra_fields = serde_json::to_string(&a.extra_fields).map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT OR IGNORE INTO platform_configs
@@ -357,10 +396,12 @@ pub fn delete_cookies(conn: &Connection, account_id: &str) -> Result<(), String>
 }
 
 pub fn delete_account(conn: &Connection, id: &str) -> Result<(), String> {
-    delete_cookies(conn, id)?;
-    conn.execute("DELETE FROM accounts WHERE id = ?1", params![id])
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    delete_cookies(&tx, id)?;
+    tx.execute("DELETE FROM field_bindings WHERE account_id=?1", [id]).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM binding_accounts WHERE account_id=?1", [id]).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM accounts WHERE id=?1", [id]).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -381,8 +422,27 @@ mod tests {
             totp_secret: "".into(),
             backup_contact: "".into(),
             remark: "".into(),
-            extra_fields: vec![ExtraField { label: "应用 ID".into(), value: "app-123".into(), secret: false }],
+            extra_fields: vec![ExtraField { id: "field-app-id".into(), label: "应用 ID".into(), value: "app-123".into(), secret: false }],
         }
+    }
+
+    /// 旧附加字段补稳定 ID；重复解锁不改变引用。
+    #[test]
+    fn extra_field_migration_is_repeatable_and_preserves_values() {
+        let conn = Connection::open_in_memory().unwrap();
+        prepare(&conn).unwrap();
+        let a = sample(); save_account(&conn, &a).unwrap();
+        conn.execute("UPDATE accounts SET extra_fields=?1", [r#"[{"label":"同名","value":"one","secret":true},{"label":"同名","value":"two","secret":false}]"#]).unwrap();
+        prepare(&conn).unwrap(); let migrated = get_account(&conn, "a1").unwrap();
+        assert!(!migrated.extra_fields[0].id.is_empty());
+        assert_ne!(migrated.extra_fields[0].id, migrated.extra_fields[1].id);
+        assert_eq!(migrated.extra_fields[0].value, "one"); assert_eq!(migrated.extra_fields[1].value, "two");
+        assert!(migrated.extra_fields[0].secret);
+        prepare(&conn).unwrap(); assert_eq!(get_account(&conn, "a1").unwrap(), migrated);
+        let mut duplicate = migrated.clone(); duplicate.id = "copy".into();
+        assert!(save_account(&conn, &duplicate).is_err());
+        for f in &mut duplicate.extra_fields { f.id = uuid::Uuid::new_v4().to_string(); }
+        save_account(&conn, &duplicate).unwrap();
     }
 
     /// 一份明文 SQLite 冒充备份：空密码不能让它"验证通过"
@@ -465,7 +525,7 @@ mod tests {
         assert!(old.extra_fields.is_empty());
 
         let mut updated = old;
-        updated.extra_fields.push(ExtraField { label: "邮箱".into(), value: "a@example.com".into(), secret: false });
+        updated.extra_fields.push(ExtraField { id: uuid::Uuid::new_v4().to_string(), label: "邮箱".into(), value: "a@example.com".into(), secret: false });
         save_account(&conn, &updated).unwrap();
         assert_eq!(get_account(&conn, "old").unwrap().extra_fields, updated.extra_fields);
     }

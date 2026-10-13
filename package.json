@@ -9,7 +9,8 @@
     "build": "tsc && vite build",
     "tauri": "tauri",
     "build:app": "tsc && vite build && node scripts/obfuscate.mjs",
-    "check:agent": "node scripts/check-agent.cjs"
+    "check:agent": "node scripts/check-agent.cjs",
+    "check:bindings": "node scripts/check-bindings.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

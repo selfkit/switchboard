@@ -3,6 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import * as api from "../api";
 import type { Account, SessionInfo } from "../api";
 import { Button, C, FILE_MANAGER, MOD, copySecret, copyText } from "../ui";
+import BindingPanel from "./BindingPanel";
 import { Sidebar, SideNav, TABS_H, type Page } from "./Layout";
 
 /**
@@ -399,6 +400,9 @@ export default function SessionsPage({
                       )}
                     </div>
                   )}
+                  {currentInfo && !currentInfo.tabs[currentInfo.active_tab]?.external && (
+                    <BindingPanel key={currentInfo.window_label} account={current} tabLabel={currentInfo.window_label} ready={currentState === "ok"} />
+                  )}
                   <button
                     type="button"
                     onClick={() => setMore(!more)}
@@ -427,7 +431,7 @@ export default function SessionsPage({
                         "把右边现在停的这个地址存成该账号的登录直达 URL，下次直接开这里",
                       )}
                       {currentState === "ok" && action(
-                        "指认输入框",
+                        "旧版平台指认",
                         () =>
                           run(
                             () => api.setPickMode(a.id, true),

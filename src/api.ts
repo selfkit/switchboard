@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 export const MIN_PASSWORD = 3;
 
 /** 与 src-tauri/src/models.rs 的 Account 一一对应 */
-export type ExtraField = { label: string; value: string; secret: boolean };
+export type ExtraField = { id: string; label: string; value: string; secret: boolean };
 
 export type Account = {
   id: string;
@@ -70,6 +70,7 @@ export type PlatformConfig = {
 
 /** 与 models.rs 的 TabInfo 对应。一个账号的一个页签 */
 export type TabInfo = {
+  label: string;
   /** 页面标题，空的时候退回显示地址 */
   title: string;
   url: string;
@@ -305,3 +306,32 @@ export const exportBackup = () => invoke<string>("export_backup");
 /** password = 这份备份当时的主密码；current = 当前账号库的主密码（整库替换，跟清空一个门槛） */
 export const importBackup = (path: string, password: string, current: string) =>
   invoke<number>("import_backup", { path, password, current });
+
+// 输入框绑定协议（见 docs/FIELD-BINDINGS.md）；状态与配置里不携带字段值。
+export type BindingPage = { origin: string; pathname: string; hashRoute: string | null; queryEquals: Record<string, string> };
+export type BindingLocator = { kind: "css"; value: string };
+export type BindingTarget = {
+  page: BindingPage;
+  contextPath: ({ kind: "shadow"; locator: BindingLocator } | { kind: "frame"; locator: BindingLocator; page: BindingPage })[];
+  locator: BindingLocator;
+  expected: { tag: string; type: string };
+};
+export type BindingSource = { kind: "account"; field: "username" | "password" } | { kind: "totp" } | { kind: "extra"; fieldId: string };
+export type FieldBinding = {
+  schemaVersion: number; id: string; accountId: string; label: string;
+  enabled: boolean; automatic: boolean; valueRef: BindingSource; target: BindingTarget;
+};
+export type BindingState = {
+  enabled: boolean; bindings: FieldBinding[]; picking: boolean; page: BindingPage | null;
+  draft: { pickId: string; target: BindingTarget } | null;
+  run: { id: string; documentId: string; status: string; results: { bindingId: string; label: string; code: string; durationMs: number | null }[] } | null;
+};
+export type SaveBinding = Pick<FieldBinding, "label" | "enabled" | "automatic" | "valueRef"> & { id?: string; pickId?: string };
+export const bindingState = (accountId: string, tabLabel: string) => invoke<BindingState>("binding_state", { accountId, tabLabel });
+export const beginBindingPick = (accountId: string, tabLabel: string) => invoke<void>("begin_binding_pick", { accountId, tabLabel });
+export const cancelBindingWork = (accountId: string, tabLabel: string) => invoke<void>("cancel_binding_work", { accountId, tabLabel });
+export const saveFieldBinding = (accountId: string, tabLabel: string, input: SaveBinding) => invoke<string>("save_field_binding", { accountId, tabLabel, input });
+export const deleteFieldBinding = (accountId: string, bindingId: string) => invoke<void>("delete_field_binding", { accountId, bindingId });
+export const setBindingMode = (accountId: string, enabled: boolean) => invoke<void>("set_binding_mode", { accountId, enabled });
+export const runFieldBindings = (accountId: string, tabLabel: string, bindingId?: string, overwrite = false) => invoke<string>("run_field_bindings", { accountId, tabLabel, bindingId, overwrite });
+export const onBindingsChanged = (f: () => void) => listen("bindings-changed", f);
