@@ -72,6 +72,7 @@
 
 ## 目录
 
+- [FIELD-BINDINGS.md](docs/FIELD-BINDINGS.md) —— Issue #1 输入框与字段绑定：可行性、方案讨论及独立自动化测试项目的复用边界（尚未实现）
 - [RELEASE.md](docs/RELEASE.md) —— 发版手册：打包、发布到 Gitee、在线更新、常见报错，以及 Windows 版怎么出包、和 macOS 有哪些区别
 - [NETWORK-GUARD.md](docs/NETWORK-GUARD.md) —— 网络区域检测：为什么要有、怎么判、实测数据
 - [ENCRYPTION.md](docs/ENCRYPTION.md) —— 加密与数据安全：账号库怎么加密、解锁 / 锁定 / 备份 / 恢复时各发生什么、挡得住什么挡不住什么、改代码的红线
