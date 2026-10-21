@@ -72,11 +72,27 @@ export default function App() {
   // 一键自动演示：顶栏上的解说字幕；running=false 时只是收尾提示（录屏存哪了），不给"停止"
   const [tour, setTour] = useState<{ text: string; running: boolean } | null>(null);
   const tourStop = useRef(false);
+  // 上次前端加载时后端还有几个会话。Windows 上 F5 重载主窗口后，用它在解锁页提示
+  // "上次的会话还在，登录后可以继续"。普通冷启动这里是 0。
+  const [boot, setBoot] = useState<{ unlocked: boolean; sessions: number } | null>(null);
 
   const unlocked = ["main", "form", "sub", "sessions"].includes(screen.name);
 
   useEffect(() => {
-    api.isInitialized().then((ok) => setScreen(ok ? { name: "unlock" } : { name: "register" }));
+    // 先复位：Windows 的 WebView2 默认把 F5 / Ctrl+R 当刷新，重载的是主窗口前端，
+    // 而 React 的 unmount 不会执行——后端 `Sessions.visible` 还是 true，账号子 webview
+    // 会继续盖在解锁页上，把表单挡得点不到，看起来就是 App 卡死。ui_boot 会先全部藏起来。
+    let alive = true;
+    void api
+      .uiBoot()
+      .then((b) => { if (alive) setBoot(b); })
+      .catch(() => {});
+    api
+      .isInitialized()
+      .then((ok) => { if (alive) setScreen(ok ? { name: "unlock" } : { name: "register" }); })
+      // 读不到初始化状态也别一直停在"加载中…"：给个登录页和错误提示，至少还能重试
+      .catch((e) => { if (alive) { setErr(String(e)); setScreen({ name: "unlock" }); } });
+    return () => { alive = false; };
   }, []);
 
   // 会话是内存态，解锁期间定时对一次账
@@ -373,6 +389,12 @@ export default function App() {
   // ⌘K 快捷切换，Esc 收起浮层。表单页不接 ⌘K——它会跳走，正在填的内容就没了。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // 桌面 App 不需要浏览器刷新。Windows 的 WebView2 默认响应 F5 / Ctrl+R，整页重载
+      // 会让前端状态和后端会话状态脱节（见启动处的 ui_boot）。开发模式留着方便调试。
+      if (!import.meta.env.DEV && (e.key === "F5" || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "r"))) {
+        e.preventDefault();
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && unlocked && screen.name !== "form") {
         e.preventDefault();
         setOverlay((o) => (o.name === "quickswitch" ? { name: "none" } : { name: "quickswitch" }));
@@ -512,8 +534,16 @@ export default function App() {
       case "register":
         return <Register onDone={enterMain} onDemo={enterDemo} onTour={runTour} />;
 
-      case "unlock":
-        return <Unlock onDone={enterMain} onDemo={enterDemo} onTour={runTour} reason={screen.reason} />;
+      case "unlock": {
+        // 重载后的提示：账号库可能还解锁着、会话也还在内存里。不是错误，所以走 reason 那条蓝条。
+        const bootNote =
+          boot && boot.sessions > 0
+            ? boot.unlocked
+              ? `界面已重新加载，账号库仍是解锁状态。上次还有 ${boot.sessions} 个会话开着，登录后可以继续。`
+              : `上次还有 ${boot.sessions} 个会话开着，登录后可以继续。`
+            : undefined;
+        return <Unlock onDone={enterMain} onDemo={enterDemo} onTour={runTour} reason={screen.reason ?? bootNote} />;
+      }
 
       case "form":
         return (

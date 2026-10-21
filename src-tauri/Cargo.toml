@@ -24,7 +24,7 @@ uuid = { version = "1", features = ["v4"] }
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
 tauri-plugin-dialog = "2"
 totp-rs = { version = "5", default-features = false }
-time = { version = "0.3", features = ["local-offset"] }
+time = { version = "0.3", features = ["local-offset", "formatting"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2.0.0-rc.4"
 tauri-plugin-process = "2.0.0-rc.1"
@@ -39,6 +39,10 @@ objc2 = "0.6"
 block2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSControl", "NSButton", "NSEvent", "block2"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSNotification", "NSOperation", "NSProcessInfo", "NSString", "NSObject", "block2"] }
+
+# Windows 的现代待机（S0ix）用电源请求对象比 SetThreadExecutionState 更可靠，见 power.rs
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_SystemServices", "Win32_System_Threading"] }
 
 # 打包体积和可分析性：strip 掉符号表，LTO 把跨 crate 的边界也揉掉，
 # 单 codegen unit + panic=abort 让产物更难对着符号读。

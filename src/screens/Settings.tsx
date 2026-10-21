@@ -108,6 +108,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
   const [wiping, setWiping] = useState(false);
   const [wipePwd, setWipePwd] = useState("");
   const [version, setVersion] = useState("");
+  const [logFile, setLogFile] = useState("");
   const [autoLock, setAutoLock] = useState(0);
   const [savingAutoLock, setSavingAutoLock] = useState(false);
 
@@ -117,6 +118,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
 
   useEffect(() => {
     void getVersion().then(setVersion);
+    void api.logPath().then((p) => setLogFile(p || "")).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -290,6 +292,22 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
           </div>
         )}
         {upd.state === "downloading" && <div style={{ fontSize: 12, color: C.muted }}>正在下载并安装，完成后会自动重启</div>}
+      </Card>
+
+      <Card style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
+        <div style={{ fontSize: 15, color: C.text }}>诊断日志</div>
+        <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.7 }}>
+          保活刷新、区域检测、页面打不开、界面重载这些事件会写进这个文件，方便排查「第二天会话没了」这类问题。
+          <b>不含</b>密码、cookie 或完整的带 token 地址。
+        </div>
+        <div style={{ background: C.bg, borderRadius: 8, padding: "10px 12px", fontSize: 11, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}>
+          {logFile || "（日志还没初始化）"}
+        </div>
+        <div>
+          <Button onClick={() => api.revealLog().catch((e) => setErr(String(e)))} disabled={!logFile}>
+            在文件管理器中显示
+          </Button>
+        </div>
       </Card>
       </div>
 

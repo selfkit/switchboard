@@ -164,6 +164,10 @@ export default function SessionsPage({
   }, [current?.id]);
   const currentInfo = current ? byId.get(current.id) : undefined;
   const currentState = current ? stateOf(current.id) : "off";
+  /** 当前页签。失败页/换协议重试都看它 */
+  const activeTab = currentInfo?.tabs[currentInfo.active_tab];
+  /** 手动输入的地址按 https 开的就建议 http，反之亦然 */
+  const altScheme: "http" | "https" = (activeTab?.url ?? "").startsWith("https:") ? "http" : "https";
   const ordered = useMemo(
     () => [...accounts.filter((a) => online.has(a.id)), ...accounts.filter((a) => !online.has(a.id))],
     [accounts, online],
@@ -398,6 +402,23 @@ export default function SessionsPage({
                           网络异常时也保活、不断开
                         </label>
                       )}
+                      {currentInfo.keep_alive && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: currentInfo.keep_alive_error ? C.danger : C.muted,
+                            lineHeight: 1.6,
+                            paddingLeft: 18,
+                            wordBreak: "break-all",
+                          }}
+                        >
+                          {currentInfo.keep_alive_error
+                            ? `保活异常：${currentInfo.keep_alive_error}`
+                            : currentInfo.keep_alive_last_secs != null
+                              ? `上次保活 ${ago(currentInfo.keep_alive_last_secs)}，${untilRefresh(currentInfo.keep_alive_next_secs)}`
+                              : `已开启，${untilRefresh(currentInfo.keep_alive_next_secs)}`}
+                        </div>
+                      )}
                     </div>
                   )}
                   {currentInfo && !currentInfo.tabs[currentInfo.active_tab]?.external && (
@@ -576,9 +597,25 @@ export default function SessionsPage({
             {newUrl === null ? (
               <button
                 type="button"
+                disabled={currentState === "cut"}
                 onClick={() => setNewUrl("")}
-                title="在这个账号里打开一个地址（带着它的登录态，要登录才能看的链接也能直接看）"
-                style={{ flexShrink: 0, padding: "2px 8px", border: 0, borderRadius: 6, background: "transparent", color: C.sub, fontSize: 14, lineHeight: 1, cursor: "pointer" }}
+                title={
+                  currentState === "cut"
+                    ? "页面已被区域拦截断开，先在告警框里重新检测网络"
+                    : "在这个账号里打开一个地址（带着它的登录态，要登录才能看的链接也能直接看）"
+                }
+                style={{
+                  flexShrink: 0,
+                  padding: "2px 8px",
+                  border: 0,
+                  borderRadius: 6,
+                  background: "transparent",
+                  color: C.sub,
+                  fontSize: 14,
+                  lineHeight: 1,
+                  cursor: currentState === "cut" ? "default" : "pointer",
+                  opacity: currentState === "cut" ? 0.35 : 1,
+                }}
               >
                 +
               </button>
@@ -691,11 +728,41 @@ export default function SessionsPage({
               textAlign: "left",
             }}
           >
-            {(currentInfo && currentInfo.active_tab > 0 ? currentInfo.tabs[currentInfo.active_tab]?.url : current.login_url) || "（没填登录直达 URL）"}
+            {activeTab?.url || current.login_url || "（没填登录直达 URL）"}
           </div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          {activeTab?.scheme_implied && (
+            <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
+              这个地址没写协议头，已按 {activeTab.url.startsWith("https:") ? "https" : "http"} 打开。
+              {activeTab.url.startsWith("https:") ? "如果站点只支持 http，点下面的按钮换一下。" : "如果站点只支持 https，点下面的按钮换一下。"}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <Button kind="primary" onClick={() => run(() => api.reloadSession(current.id))}>
               刷新重试
+            </Button>
+            {activeTab?.manual_url && (
+              <Button onClick={() => run(() => api.retryActiveTab(current.id, altScheme))}>
+                改用 {altScheme}:// 重试
+              </Button>
+            )}
+            <Button
+              onClick={() =>
+                run(async () => {
+                  const log = await api.logPath().catch(() => null);
+                  const text = [
+                    "Switchboard 页面打不开",
+                    `平台：${current.platform}`,
+                    `地址：${activeTab?.url || current.login_url || "（空）"}`,
+                    `原因：${byId.get(current.id)?.fail_reason ?? "未知"}`,
+                    `手动输入：${activeTab?.manual_url ? "是" : "否"}${activeTab?.scheme_implied ? "（协议是按主机猜的）" : ""}`,
+                    `日志：${log || "（未启用）"}`,
+                  ].join("\n");
+                  if (!(await copyText(text))) throw new Error("复制失败，请检查剪贴板权限");
+                  setTip("诊断信息已复制，可以直接贴到 issue 里");
+                })
+              }
+            >
+              复制诊断信息
             </Button>
             <Button
               onClick={() =>
@@ -719,6 +786,23 @@ export default function SessionsPage({
     </div>
     </>
   );
+}
+
+/** "上次保活"用的相对时间 */
+function ago(secs: number | null): string {
+  if (secs == null) return "刚刚";
+  if (secs < 60) return `${secs} 秒前`;
+  const m = Math.floor(secs / 60);
+  if (m < 60) return `${m} 分钟前`;
+  return `${Math.floor(m / 60)} 小时 ${m % 60} 分钟前`;
+}
+
+/** "还有多久刷新" */
+function untilRefresh(secs: number | null): string {
+  if (secs == null) return "马上刷新";
+  if (secs <= 5) return "马上刷新";
+  if (secs < 60) return `约 ${secs} 秒后刷新`;
+  return `约 ${Math.ceil(secs / 60)} 分钟后刷新`;
 }
 
 /** 页签上没有标题时退回显示主机名，整条 URL 太长塞不下 */

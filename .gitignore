@@ -3,6 +3,7 @@
 /docs/prototype/.restyle_light.py
 .DS_Store
 node_modules/
+__pycache__/
 dist/
 /src-tauri/target/
 /src-tauri/gen/

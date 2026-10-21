@@ -18,7 +18,8 @@
         "minWidth": 1024,
         "minHeight": 700,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "scrollBarStyle": "fluentOverlay"
       }
     ],
     "security": {
@@ -31,6 +32,7 @@
     "copyright": "Copyright © 2026 tan · MIT License",
     "active": true,
     "targets": "all",
+    "useLocalToolsDir": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

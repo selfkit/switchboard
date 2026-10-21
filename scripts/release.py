@@ -46,6 +46,10 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+# 同目录的小工具：NSIS 插件缓存。Tauri 自己下载在国内网络下容易截断，见 scripts/nsis_utils.py
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import nsis_utils  # noqa: E402
+
 OWNER, REPO, BRANCH = "etn", "switchboard_store", "master"
 API = "https://gitee.com/api/v5"
 ROOT = Path(__file__).resolve().parent.parent
@@ -222,6 +226,9 @@ def build_windows():
         print("\n⚠ 这台 Mac 还不能打 Windows 包，先装：")
         for m in missing:
             print(f"    {m}")
+        return False
+    if not nsis_utils.ensure(ROOT):
+        print("\n⚠ NSIS 插件缓存没准备好，Windows 包打不出来")
         return False
     print("\n▶ 构建 Windows 安装包（MinGW 交叉编译；第一次要现编 OpenSSL，几分钟）")
     # 旧产物先清掉：这一步要是失败了，别让上一次同版本号的旧包被当成这次的发出去

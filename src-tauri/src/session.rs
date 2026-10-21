@@ -91,6 +91,10 @@ pub struct Tab {
     pub download_only: bool,
     /// 开出这个页签时用户停在哪个页签（label）。下载专用的空页签要把用户送回那里
     pub return_to: Option<String>,
+    /// 用户手动输入地址打开时，记住原始输入。失败页可以换协议重试；页面自己开的页签是 None
+    pub manual_url: Option<String>,
+    /// manual_url 是没写协议头、由我们补的（失败时提示"可能协议猜错了"）
+    pub manual_scheme_implied: bool,
 }
 
 impl Tab {
@@ -196,6 +200,13 @@ pub struct SessionState {
     pub keep_alive: Option<bool>,
     /// 这个账号最近一次有动静：用户在它的页面里操作过，或者保活刚刷过它
     pub alive_at: KeepAliveClock,
+    /// 账号的登录直达 URL。保活刷新失败时退回这里重试：
+    /// SPA 当前路由可能带一次性 token，过期后回入口反而能靠 cookie 接回来
+    pub login_url: String,
+    /// 上一次保活刷新（navigate 成功）的时间，侧栏显示"上次保活"
+    pub last_keep_alive: Option<KeepAliveClock>,
+    /// 上一次保活失败的原因；成功刷新一次就清掉
+    pub keep_alive_error: Option<String>,
 }
 
 impl SessionState {
@@ -730,6 +741,8 @@ fn build_tab(
     target: tauri::Url,
     autofill: bool,
     cookies: &[String],
+    // 手动输入打开时传原始输入和"协议是不是补的"，失败后要能换协议重试
+    manual: Option<(String, bool)>,
 ) -> Result<Tab, String> {
     let label = tab_label(account_id, seq);
     let win = main_window(app)?;
@@ -758,7 +771,12 @@ fn build_tab(
 
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(blank))
         .data_directory(profile_dir(app, account_id)?)
-        .data_store_identifier(store_identifier(account_id))
+        .data_store_identifier(store_identifier(account_id));
+    // Windows 上跟主窗口一样用细的浮层滚动条。macOS/Linux 的 runtime 枚举里没有这个变体，
+    // 只能按平台分开写；同一个数据目录下的 webview 滚动条样式必须一致，否则 WebView2 会拒绝。
+    #[cfg(windows)]
+    let builder = builder.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
+    let builder = builder
         // 锁库和切换账号都会 hide 页面；默认暂停策略会冻结隐藏页面的 JS / 请求。
         // 在创建时关闭它，让运行中的账号能随时勾选保活而不用重建、丢失登录态。
         // 主窗口仍用默认策略；只有勾了保活的账号会定时刷新、在锁库时保留。
@@ -855,6 +873,8 @@ fn build_tab(
         seen_page,
         download_only: false,
         return_to: None,
+        manual_url: manual.as_ref().map(|(raw, _)| raw.clone()),
+        manual_scheme_implied: manual.as_ref().is_some_and(|(_, implied)| *implied),
     })
 }
 
@@ -912,42 +932,45 @@ fn open_popup_window(
         &label,
         WebviewUrl::External("about:blank".parse().map_err(|_| "about:blank 解析失败")?),
     )
-    .window_features(features)
-    // 跟账号页面同一个道理：Tauri 自己的拖放接收器会把 OS 拖放接走，
-    // 弹窗里要是有上传区就又拖不进去了
-    .disable_drag_drop_handler()
-    // 弹窗里也可能点下载（有些平台把证书/模板放在弹出的说明页里）
-    .on_download({
-        let (dl_app, dl_label) = (app.clone(), label.clone());
-        let dl_last = Arc::new(Mutex::new(PathBuf::new()));
-        move |_, event| handle_download(&dl_app, &dl_label, &dl_last, event)
-    })
-    // 只用来认"这个弹窗有没有显示过页面"：window.open 直接开一个下载地址的弹窗，下载完要关掉
-    .on_page_load({
-        let seen = seen_page.clone();
-        move |_, p| {
-            if p.event() == tauri::webview::PageLoadEvent::Finished && p.url().as_str() != "about:blank" {
-                seen.store(true, Ordering::Relaxed);
+    .window_features(features);
+    #[cfg(windows)]
+    let window = window.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
+    let window = window
+        // 跟账号页面同一个道理：Tauri 自己的拖放接收器会把 OS 拖放接走，
+        // 弹窗里要是有上传区就又拖不进去了
+        .disable_drag_drop_handler()
+        // 弹窗里也可能点下载（有些平台把证书/模板放在弹出的说明页里）
+        .on_download({
+            let (dl_app, dl_label) = (app.clone(), label.clone());
+            let dl_last = Arc::new(Mutex::new(PathBuf::new()));
+            move |_, event| handle_download(&dl_app, &dl_label, &dl_last, event)
+        })
+        // 只用来认"这个弹窗有没有显示过页面"：window.open 直接开一个下载地址的弹窗，下载完要关掉
+        .on_page_load({
+            let seen = seen_page.clone();
+            move |_, p| {
+                if p.event() == tauri::webview::PageLoadEvent::Finished && p.url().as_str() != "about:blank" {
+                    seen.store(true, Ordering::Relaxed);
+                }
             }
-        }
-    })
-    // 弹窗里的 target=_blank 也得有人接，不然又是点了没反应；开成账号下的页签
-    .on_new_window({
-        let (app, id) = (app.clone(), account_id.to_string());
-        move |url, _| {
-            spawn_tab(&app, &id, url);
-            tauri::webview::NewWindowResponse::Deny
-        }
-    })
-    .title(url.as_str())
-    .on_document_title_changed(move |w, t| {
-        let _ = w.set_title(&t);
-        if let Ok(mut cur) = title_cb.lock() {
-            *cur = t;
-        }
-    })
-    .build()
-    .map_err(|e| e.to_string())?;
+        })
+        // 弹窗里的 target=_blank 也得有人接，不然又是点了没反应；开成账号下的页签
+        .on_new_window({
+            let (app, id) = (app.clone(), account_id.to_string());
+            move |url, _| {
+                spawn_tab(&app, &id, url);
+                tauri::webview::NewWindowResponse::Deny
+            }
+        })
+        .title(url.as_str())
+        .on_document_title_changed(move |w, t| {
+            let _ = w.set_title(&t);
+            if let Ok(mut cur) = title_cb.lock() {
+                *cur = t;
+            }
+        })
+        .build()
+        .map_err(|e| e.to_string())?;
 
     // 用户关掉弹窗窗口时把这条页签也摘掉，否则区域拦截以后会去操作一个已经没了的 webview
     let gone_app = app.clone();
@@ -980,6 +1003,8 @@ fn open_popup_window(
             seen_page,
             download_only: false,
             return_to: None,
+            manual_url: None,
+            manual_scheme_implied: false,
         });
     }
     Ok(window)
@@ -1011,6 +1036,16 @@ fn remove_tab_by_label(app: &AppHandle, label: &str) -> Option<bool> {
 /// 在某个账号下开一个新页签（由 `on_new_window` 调用，也可以给"新建页签"按钮用）。
 /// 页面没开着就什么都不做——新页签必须挂在一个已有会话上，才能共享它的 data store。
 pub fn open_tab(app: &AppHandle, account_id: &str, url: tauri::Url) -> Result<(), String> {
+    open_tab_with(app, account_id, url, None)
+}
+
+/// 跟 `open_tab` 一样，但记下"这是用户手动输入的地址"，失败后可以换协议重试。
+fn open_tab_with(
+    app: &AppHandle,
+    account_id: &str,
+    url: tauri::Url,
+    manual: Option<(String, bool)>,
+) -> Result<(), String> {
     let seq = {
         let sessions = app.state::<Sessions>();
         let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
@@ -1026,7 +1061,7 @@ pub fn open_tab(app: &AppHandle, account_id: &str, url: tauri::Url) -> Result<()
         seq
     };
     // 新页签不带 cookie 快照也不自动填充：store 是共享的，登录态已经在里面
-    let tab = build_tab(app, account_id, seq, url, false, &[])?;
+    let tab = build_tab(app, account_id, seq, url, false, &[], manual)?;
     {
         let sessions = app.state::<Sessions>();
         let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
@@ -1040,23 +1075,93 @@ pub fn open_tab(app: &AppHandle, account_id: &str, url: tauri::Url) -> Result<()
     Ok(())
 }
 
-/// 用户手动给的地址。从聊天里复制的链接常常不带协议头，补上 https；
+/// 用户手动给的地址。从聊天里复制的链接常常不带协议头，这里按主机猜一个：
+/// - localhost / 私网 / 带非 443 端口的，多半是自建服务（宝塔、Graylog、路由器），先 http
+/// - 其余先 https
+/// 猜错也不怕：失败页可以一键换协议重试。
 /// 只放行 http(s)：javascript: / file: 这种进了带登录态的页签就是另一回事了
-fn parse_user_url(raw: &str) -> Result<tauri::Url, String> {
+struct UserUrl {
+    url: tauri::Url,
+    /// 原输入没写协议头，协议是我们补的
+    implied_scheme: bool,
+}
+
+/// 原输入有没有写协议头。只认"字母开头、后面是 scheme 合法字符"的 `xxx://`；
+/// 路径里恰好有 `://` 不算。
+fn explicit_scheme(raw: &str) -> Option<&str> {
+    raw.split_once("://").and_then(|(scheme, _)| {
+        (!scheme.is_empty()
+            && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+            && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')))
+        .then_some(scheme)
+    })
+}
+
+fn parse_user_url(raw: &str) -> Result<UserUrl, String> {
     let raw = raw.trim();
-    let full = if raw.contains("://") { raw.to_string() } else { format!("https://{raw}") };
+    let explicit = explicit_scheme(raw).is_some();
+    let full = if explicit {
+        raw.to_string()
+    } else {
+        format!("{}://{raw}", default_scheme(raw))
+    };
     let url: tauri::Url = full.parse().map_err(|_| format!("地址不合法：{raw}"))?;
     match url.scheme() {
         // 带用户名的不要：补协议头后 "mailto:a@b.c" 会被读成用户 mailto 登录 b.c
-        "http" | "https" if url.host().is_some() && url.username().is_empty() => Ok(url),
+        "http" | "https" if url.host().is_some() && url.username().is_empty() => {
+            Ok(UserUrl { url, implied_scheme: !explicit })
+        }
         _ => Err(format!("只能打开 http / https 地址：{raw}")),
     }
+}
+
+/// 没写协议头时先试哪个。判错了也没关系，失败页能一键换。
+fn default_scheme(raw: &str) -> &'static str {
+    // 只看 authority：第一个 / ? # 之前
+    let head = raw.split(['/', '?', '#']).next().unwrap_or(raw);
+    // 去掉 userinfo
+    let hostport = head.rsplit('@').next().unwrap_or(head);
+    let (host, port) = if let Some(rest) = hostport.strip_prefix('[') {
+        // IPv6：[::1]:8080 / [::1]
+        match rest.split_once(']') {
+            Some((h, tail)) => (h, tail.strip_prefix(':').filter(|p| !p.is_empty())),
+            None => (rest, None),
+        }
+    } else {
+        match hostport.rsplit_once(':') {
+            Some((h, p)) if !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => (h, Some(p)),
+            _ => (hostport, None),
+        }
+    };
+    let host = host.to_ascii_lowercase();
+    let local = host == "localhost"
+        || host.ends_with(".localhost")
+        || host.ends_with(".local")
+        || host == "::1"
+        || host.starts_with("127.")
+        || host.starts_with("10.")
+        || host.starts_with("192.168.")
+        || private_172(&host)
+        // 单段主机名基本只能是内网（wiki、jira、nas），公网域名总得带个点
+        || (!host.is_empty() && !host.contains('.') && !host.contains(':'));
+    // 443 / 8443 是标准 https 端口；带了别的端口多半是自建服务
+    let odd_port = port.is_some_and(|p| p != "443" && p != "8443");
+    if local || odd_port { "http" } else { "https" }
+}
+
+fn private_172(host: &str) -> bool {
+    let mut parts = host.split('.');
+    parts.next() == Some("172")
+        && parts
+            .next()
+            .and_then(|s| s.parse::<u8>().ok())
+            .is_some_and(|n| (16..=31).contains(&n))
 }
 
 /// 在账号下开一个新页签打开指定地址。登录态是整个账号共享的，
 /// 别人发来的"要登录才能看"的链接在这里开就直接能看
 pub fn open_url(app: &AppHandle, account_id: &str, raw: &str) -> Result<(), String> {
-    let url = parse_user_url(raw)?;
+    let parsed = parse_user_url(raw)?;
     {
         let sessions = app.state::<Sessions>();
         let map = sessions.map.lock().map_err(|e| e.to_string())?;
@@ -1065,7 +1170,56 @@ pub fn open_url(app: &AppHandle, account_id: &str, raw: &str) -> Result<(), Stri
             return Err(CUT_MSG.into());
         }
     }
-    open_tab(app, account_id, url)
+    // 日志只记协议和主机，不记完整地址：有些链接的 query 里带一次性 token
+    let host = parsed.url.host_str().unwrap_or("?");
+    crate::logfile::write("webview", &format!("手动打开：{}://{host}", parsed.url.scheme()));
+    open_tab_with(app, account_id, parsed.url, Some((raw.trim().to_string(), parsed.implied_scheme)))
+}
+
+/// 手动输入的地址打不开时换协议再试。只对"手动输入打开的页签"生效——
+/// 页面自己开的页签没有原始输入，换协议没有意义。
+pub fn retry_scheme(app: &AppHandle, account_id: &str, scheme: &str) -> Result<(), String> {
+    if scheme != "http" && scheme != "https" {
+        return Err("只支持 http / https".into());
+    }
+    let (label, target) = {
+        let sessions = app.state::<Sessions>();
+        let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
+        let s = map.get_mut(account_id).ok_or("这个账号的页面没开着")?;
+        if s.tabs.iter().any(|t| t.cut) {
+            return Err(CUT_MSG.into());
+        }
+        let raw = s
+            .active()
+            .manual_url
+            .clone()
+            .ok_or("这个页签不是手动输入打开的，没有原始地址可换协议")?;
+        let rest = explicit_scheme(&raw)
+            .map(|prefix| &raw[prefix.len() + "://".len()..])
+            .unwrap_or(raw.as_str());
+        let raw_target = format!("{scheme}://{rest}");
+        let url: tauri::Url = raw_target.parse().map_err(|_| format!("地址不合法：{raw_target}"))?;
+        if url.host().is_none() || !url.username().is_empty() {
+            return Err(format!("地址不合法：{raw_target}"));
+        }
+        let t = s.active_mut();
+        t.manual_url = Some(raw_target.clone());
+        t.manual_scheme_implied = false;
+        // 超时失败时 on_page_load 不会来更新 last_url；先记下这次的目标，
+        // 否则再失败一次，失败页显示的还会是上一个协议
+        if let Ok(mut u) = t.last_url.lock() {
+            *u = raw_target.clone();
+        }
+        t.renav();
+        (t.label.clone(), url)
+    };
+    let view = app.get_webview(&label).ok_or("页面已丢失")?;
+    crate::bindings::arm(app, &label);
+    let host = target.host_str().unwrap_or("?");
+    crate::logfile::write("webview", &format!("换协议重试 {label} → {}://{host}", target.scheme()));
+    view.navigate(target).map_err(|e| e.to_string())?;
+    refresh_layout(app);
+    Ok(())
 }
 
 /// 切到某个页签。
@@ -1160,7 +1314,7 @@ pub fn open_or_focus(
         let parsed: tauri::Url = url.parse().map_err(|_| format!("登录 URL 不合法：{url}"))?;
 
         // 只有首个页签自动填充：新页签共享登录态，用不着再填
-        let tab = build_tab(app, &account.id, 0, parsed, true, cookies)?;
+        let tab = build_tab(app, &account.id, 0, parsed, true, cookies, None)?;
 
         sessions.map.lock().map_err(|e| e.to_string())?.insert(
             account.id.clone(),
@@ -1177,6 +1331,9 @@ pub fn open_or_focus(
                 opened_at: Instant::now(),
                 keep_alive,
                 alive_at: KeepAliveClock::now(),
+                login_url: account.login_url.trim().to_string(),
+                last_keep_alive: None,
+                keep_alive_error: None,
             },
         );
     }
@@ -1228,11 +1385,21 @@ pub fn list(app: &AppHandle) -> Result<Vec<SessionInfo>, String> {
                         loaded: t.loaded.load(Ordering::Relaxed),
                         failed: t.failed(),
                         external: t.external,
+                        manual_url: t.manual_url.clone(),
+                        scheme_implied: t.manual_scheme_implied,
                     })
                     .collect(),
                 active_tab: s.active_tab,
                 keep_alive: s.keep_alive.is_some(),
                 keep_alive_any_network: s.keep_alive == Some(true),
+                keep_alive_last_secs: s
+                    .keep_alive
+                    .and(s.last_keep_alive.as_ref())
+                    .map(|c| c.elapsed().as_secs()),
+                keep_alive_next_secs: s
+                    .keep_alive
+                    .map(|_| KEEP_ALIVE_SECS.saturating_sub(s.alive_at.elapsed().as_secs())),
+                keep_alive_error: s.keep_alive_error.clone(),
             }
         })
         .collect();
@@ -1650,17 +1817,38 @@ pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
             let Some(s) = map.values_mut().find(|s| s.tabs.iter().any(|t| t.label == label)) else { continue };
             // 取 URL 期间用户可能关闭了保活或撤掉异常网络豁免。
             if !keep_alive_due(s.keep_alive, KEEP_ALIVE_SECS, abnormal) { continue; }
+            let login_url = s.login_url.clone();
             let Some(t) = s.tab_of(&label) else { continue };
             if !t.keep_alive_target() {
                 continue;
             }
+            let failed_before = t.failed();
             let last = t.last_url.lock().map(|u| u.clone()).unwrap_or_default();
-            let Some(target) = url.filter(|u| u.scheme() != "about").or_else(|| last.parse().ok()) else { continue };
+            // 上一轮已经打不开：退回账号的登录直达 URL，靠共享的 cookie 重新走一遍 SSO。
+            // 有些控制台的当前路由带一次性 token，过期后越刷越坏，回入口反而能接回来。
+            let fallback = if failed_before { login_url.parse::<tauri::Url>().ok() } else { None };
+            let Some(target) = fallback
+                .or_else(|| url.filter(|u| u.scheme() != "about"))
+                .or_else(|| last.parse().ok())
+            else {
+                continue;
+            };
             let Some(v) = app.get_webview(&label) else { continue };
+            let desc = format!("{}://{}", target.scheme(), target.host_str().unwrap_or("?"));
             crate::bindings::disarm(app, &label);
             t.renav();
-            if v.navigate(target).is_ok() {
-                n += 1;
+            // 日志只记主机和结果，不记完整地址（query 里可能有一次性 token）
+            match v.navigate(target) {
+                Ok(()) => {
+                    n += 1;
+                    s.last_keep_alive = Some(KeepAliveClock::now());
+                    s.keep_alive_error = None;
+                    crate::logfile::write("keep-alive", &format!("{label} → {desc} 已刷新"));
+                }
+                Err(e) => {
+                    s.keep_alive_error = Some(format!("刷新失败：{e}"));
+                    crate::logfile::write("keep-alive", &format!("{label} → {desc} 失败：{e}"));
+                }
             }
         }
     }
@@ -1687,6 +1875,7 @@ pub fn set_keep_alive(app: &AppHandle, account_id: &str, setting: Option<bool>) 
     let Some(s) = map.get_mut(account_id) else { return false };
     let was = s.region_exempt();
     s.keep_alive = setting;
+    s.keep_alive_error = None; // 刚重新勾上，上一次的失败结论不再适用于新一轮
     s.alive_at = KeepAliveClock::now(); // 开了很久的页面，刚勾上别当场就刷
     drop(map);
     crate::power::sync(app);
@@ -1695,14 +1884,26 @@ pub fn set_keep_alive(app: &AppHandle, account_id: &str, setting: Option<bool>) 
 
 /// 页面自报打不开（HTTP 4xx/5xx 或纯白板）。由 `report_page_state` 命令调用。
 pub fn mark_failure(app: &AppHandle, label: &str, reason: Option<String>) {
-    {
+    let changed = {
         let sessions = app.state::<Sessions>();
         let Ok(mut map) = sessions.map.lock() else { return };
-        let Some(t) = map.values_mut().find_map(|s| s.tab_of(label)) else { return };
-        if t.fail == reason {
-            return; // 没变化就别白折腾一次重排
+        let Some(s) = map.values_mut().find(|s| s.tabs.iter().any(|t| t.label == label)) else { return };
+        let stale_error = s.keep_alive_error.is_some();
+        let Some(t) = s.tab_of(label) else { return };
+        // 没变化就别白折腾一次重排；但页面自己恢复(200)时要顺手清掉上一次
+        // "刷新失败"的标记，所以 keep_alive_error 还挂着的时候不能提前返回
+        if t.fail == reason && !stale_error {
+            return;
         }
-        t.fail = reason;
+        t.fail = reason.clone();
+        // 保活账号把"刷新后还是打不开"记下来，侧栏能直接看到原因，不用翻日志
+        if s.keep_alive.is_some() {
+            s.keep_alive_error = reason.as_ref().map(|r| format!("页面打不开：{r}"));
+        }
+        reason
+    };
+    if let Some(reason) = changed {
+        crate::logfile::write("webview", &format!("{label} 页面打不开：{reason}"));
     }
     refresh_layout(app);
 }
@@ -1960,6 +2161,8 @@ mod tests {
             seen_page: Arc::new(AtomicBool::new(seen)),
             download_only: false,
             return_to: return_to.map(Into::into),
+            manual_url: None,
+            manual_scheme_implied: false,
         }
     }
 
@@ -1984,6 +2187,9 @@ mod tests {
             opened_at: Instant::now(),
             keep_alive: None,
             alive_at: KeepAliveClock::now(),
+            login_url: String::new(),
+            last_keep_alive: None,
+            keep_alive_error: None,
         };
         assert!(s.cuttable());
         s.keep_alive = Some(false);
@@ -2035,6 +2241,9 @@ mod tests {
             opened_at: Instant::now(),
             keep_alive,
             alive_at: KeepAliveClock::now(),
+            login_url: String::new(),
+            last_keep_alive: None,
+            keep_alive_error: None,
         };
         let kept = session(Some(false));
         let original_page = kept.tabs[0].loaded.clone();
@@ -2053,10 +2262,34 @@ mod tests {
     }
 
     #[test]
-    fn user_url_gets_https_and_only_http_passes() {
-        assert_eq!(parse_user_url(" help.aliyun.com/doc?id=1 ").unwrap().as_str(), "https://help.aliyun.com/doc?id=1");
-        assert_eq!(parse_user_url("http://203.0.113.10:8888/x").unwrap().as_str(), "http://203.0.113.10:8888/x");
-        assert_eq!(parse_user_url("localhost:8080/x").unwrap().as_str(), "https://localhost:8080/x");
+    fn user_url_keeps_explicit_scheme_and_guesses_http_for_self_hosted() {
+        let u = parse_user_url(" help.aliyun.com/doc?id=1 ").unwrap();
+        assert_eq!(u.url.as_str(), "https://help.aliyun.com/doc?id=1");
+        assert!(u.implied_scheme, "没写协议头，要告诉失败页可以换协议");
+        let u = parse_user_url("http://203.0.113.10:8888/x").unwrap();
+        assert_eq!(u.url.as_str(), "http://203.0.113.10:8888/x");
+        assert!(!u.implied_scheme, "用户自己写的 http 不主动改");
+        // 本机/私网/非标准端口多半是自建服务（宝塔、Graylog、路由器），先按 http 试；
+        // 猜错了失败页能一键换回 https
+        for (raw, want) in [
+            ("localhost:8080/x", "http://localhost:8080/x"),
+            ("127.0.0.1:9090", "http://127.0.0.1:9090/"),
+            ("192.168.1.10:8888/", "http://192.168.1.10:8888/"),
+            ("10.0.0.5:5000", "http://10.0.0.5:5000/"),
+            ("172.20.1.2:8080", "http://172.20.1.2:8080/"),
+            ("172.32.1.2", "https://172.32.1.2/"),
+            ("nas.local:5666", "http://nas.local:5666/"),
+            ("example.com:8080", "http://example.com:8080/"),
+            ("example.com:443", "https://example.com/"),
+            ("example.com:8443", "https://example.com:8443/"),
+            ("jira", "http://jira/"),
+            ("[::1]:8080", "http://[::1]:8080/"),
+            ("example.com", "https://example.com/"),
+        ] {
+            let u = parse_user_url(raw).unwrap();
+            assert_eq!(u.url.as_str(), want, "{raw}");
+            assert!(u.implied_scheme, "{raw}");
+        }
         for bad in ["javascript:alert(1)", "file:///etc/passwd", "mailto:a@b.c", "", "   "] {
             assert!(parse_user_url(bad).is_err(), "{bad} 不该放行");
         }
@@ -2085,6 +2318,9 @@ mod tests {
             opened_at: Instant::now(),
             keep_alive: None,
             alive_at: KeepAliveClock::now(),
+            login_url: String::new(),
+            last_keep_alive: None,
+            keep_alive_error: None,
         };
         assert!(s.tabs[2].failed(), "不处理的话：没加载过的新页签超时就判成打不开");
         assert!(s.mark_download_only("t2"));

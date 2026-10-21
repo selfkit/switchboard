@@ -60,32 +60,80 @@ mod platform {
 
 #[cfg(windows)]
 mod platform {
-    // https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-setthreadexecutionstate
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn SetThreadExecutionState(flags: u32) -> u32;
-    }
-    const ES_CONTINUOUS: u32 = 0x80000000;
-    const ES_SYSTEM_REQUIRED: u32 = 0x00000001;
+    // 电源请求对象（PowerCreateRequest）比 SetThreadExecutionState 在现代待机（S0ix）上更可靠：
+    // 前者是"这个进程需要系统保持唤醒"，后者是"这个线程"级别的旧 API，
+    // 一些笔记本合盖/熄屏后仍会滑进现代待机。失败时退回旧 API，不让保活因此办不成。
+    // https://learn.microsoft.com/windows/win32/power/powercreatepowerrequest
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Power::{
+        PowerClearRequest, PowerCreateRequest, PowerSetRequest, PowerRequestSystemRequired,
+    };
+    use windows::Win32::System::SystemServices::POWER_REQUEST_CONTEXT_VERSION;
+    use windows::Win32::System::Threading::{
+        POWER_REQUEST_CONTEXT_SIMPLE_STRING, REASON_CONTEXT, REASON_CONTEXT_0,
+    };
 
-    pub struct Activity;
+    pub struct Activity {
+        /// 电源请求句柄。None = 退回了旧的 SetThreadExecutionState
+        request: Option<HANDLE>,
+        /// REASON_CONTEXT 里的指针指向它，必须跟请求活一样久
+        _reason: Vec<u16>,
+        legacy: bool,
+    }
 
     impl Activity {
         pub fn begin() -> Result<Self, String> {
+            let mut reason: Vec<u16> = "Switchboard 保活：锁屏后继续刷新账号页面"
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let context = REASON_CONTEXT {
+                Version: POWER_REQUEST_CONTEXT_VERSION,
+                Flags: POWER_REQUEST_CONTEXT_SIMPLE_STRING,
+                Reason: REASON_CONTEXT_0 { SimpleReasonString: PWSTR(reason.as_mut_ptr()) },
+            };
+            // SAFETY: context 指向 reason，reason 跟着 Activity 一起活；
+            // 句柄在 Drop 里先清请求再关闭。
+            if let Ok(handle) = unsafe { PowerCreateRequest(&context) } {
+                if unsafe { PowerSetRequest(handle, PowerRequestSystemRequired) }.is_ok() {
+                    return Ok(Self { request: Some(handle), _reason: reason, legacy: false });
+                }
+                let _ = unsafe { CloseHandle(handle) };
+            }
+            let _ = crate::logfile::write("power", "电源请求对象不可用，退回 SetThreadExecutionState");
             // SAFETY: 只传文档规定的标志；获取和释放都在 Tauri 主线程上。
             if unsafe { SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED) } == 0 {
                 return Err("无法阻止系统空闲睡眠".into());
             }
-            Ok(Self)
+            Ok(Self { request: None, _reason: reason, legacy: true })
         }
     }
 
     impl Drop for Activity {
         fn drop(&mut self) {
-            // SAFETY: 清掉同一线程先前设置的要求，不请求保持屏幕亮着。
-            unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
+            if let Some(handle) = self.request.take() {
+                // SAFETY: 句柄来自 PowerCreateRequest，且只在这里关闭一次。
+                unsafe {
+                    let _ = PowerClearRequest(handle, PowerRequestSystemRequired);
+                    let _ = CloseHandle(handle);
+                }
+                return;
+            }
+            if self.legacy {
+                // SAFETY: 清掉同一线程先前设置的要求，不请求保持屏幕亮着。
+                unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
+            }
         }
     }
+
+    // 旧 API 只做兜底，所以这里自己声明，不再多拉一份 windows 的 feature。
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetThreadExecutionState(flags: u32) -> u32;
+    }
+    const ES_CONTINUOUS: u32 = 0x8000_0000;
+    const ES_SYSTEM_REQUIRED: u32 = 0x0000_0001;
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]

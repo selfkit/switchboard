@@ -368,6 +368,12 @@ Windows 安装包**也在这台 Mac 上打**：用 MinGW 交叉编译（`x86_64-
 Windows 上的 `nmake.exe`，Mac 上没有；MinGW 那条走普通 `make`，Mac 上能编。实测产物只依赖 Windows 自带的系统 DLL，
 外加 `WebView2Loader.dll`（MinGW 版要动态加载它，tauri 会自动打进安装包）。
 
+> **NSIS 工具缓存**：`bundle.useLocalToolsDir: true` 会让 Tauri 把 NSIS 工具放在
+> `src-tauri/target/.tauri/`（仓库内），不再依赖用户缓存目录的写权限。
+> Tauri 打包前会从 GitHub 下载 `nsis_tauri_utils.dll`，国内网络下用 ureq 经常拿到截断的响应
+> （`io: unexpected end of file`）。`release.py` 会先用 curl 下好并校验 SHA1；
+> 手动跑 `pnpm tauri build` 之前可以先执行 `python3 scripts/nsis_utils.py`。
+>
 > ⚠️ 打出来的包**还没在 Windows 真机上跑过**。Tauri 对交叉编译的说法是"实验性"，第一次发之前，
 > 先选 2 只构建，把 `src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/` 下的安装包拿到一台 Windows 上按「上线前实测」走一遍，
 > 没问题再选 3 直接上传。
@@ -438,6 +444,9 @@ pnpm tauri build --bundles nsis
 3. 锁定后等十几秒，看 `%APPDATA%\com.switchboard.app\profiles\` 下对应账号的目录被删掉了
 4. 页面里下载一个文件，点提示条能在资源管理器里选中它
 5. 复制密码，30 秒后剪贴板被清空；这期间复制了别的就不清
+6. 在会话页按 F5 / Ctrl+R：界面应回到解锁页，账号页面不应盖住解锁表单（主窗口刷新被屏蔽；如果还是发生，看数据目录下的 `switchboard.log`）
+7. 页签条 `+` 里输入一个不带协议头的自建地址（如 `192.168.1.10:8888`）：应先按 http 打开；故意写错的协议要在失败页能用「改用 https:// 重试」
+8. 开一个保活账号放一晚：侧栏应能看到「上次保活 / 下次刷新」，数据目录的 `switchboard.log` 里每约 3 分钟一条记录；第二天回来仍应是登录态（关机/合盖睡眠导致的过期另算）
 6. 「系统浏览器」能打开当前地址；开着代理时会被拦并说明原因
 7. 登录页「忘记主密码」里的命令在 PowerShell 里能执行，重开 App 回到创建主账号
 8. 进演示模式、锁定退出、马上再进一次，能进去
@@ -502,6 +511,7 @@ killall Dock
 | 路径 | 作用 |
 |---|---|
 | `scripts/release.py` | 发布脚本，交互式菜单，macOS + Windows 一起发 |
+| `scripts/nsis_utils.py` | 预先下载并校验 NSIS 插件到 `src-tauri/target/.tauri/`，绕开 Tauri 在国内网络下的截断 |
 | `scripts/obfuscate.mjs` | 打包时的 JS 混淆，挂在 `pnpm build:app` |
 | `src-tauri/tauri.conf.json` | `version` 版本号、`plugins.updater` 端点和公钥、`bundle` 打包配置 |
 | `~/.switchboard-keys/updater.key` | 签名私钥，**不在仓库里，丢了发不了更新** |

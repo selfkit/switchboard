@@ -3,6 +3,7 @@ mod bindings;
 mod context_menu;
 mod db;
 mod demo;
+mod logfile;
 mod models;
 mod power;
 mod region;
@@ -792,6 +793,7 @@ async fn region_patrol(app: &AppHandle) {
     }
 
     let blocked = verdict.blocked();
+    logfile::write("region", &format!("巡检：mode={mode} blocked={blocked} 出口={}", verdict.ip));
     let changed = {
         let guard = app.state::<RegionGuard>();
         let mut last = match guard.0.lock() {
@@ -816,6 +818,7 @@ async fn region_patrol(app: &AppHandle) {
             snapshot_cookies(app, None);
             let n = session::cut_all(app);
             eprintln!("[switchboard] 区域拦截：已切断 {n} 个会话（出口 {}）", verdict.ip);
+            logfile::write("region", &format!("切断 {n} 个会话，出口 {}", verdict.ip));
             // 断完也要弹框：页面无缘无故变空白，不说一声用户只会以为程序坏了。
             // 只有这一次会弹——下一轮没有可切的了，判定成 Nothing
             ask = n > 0;
@@ -824,6 +827,7 @@ async fn region_patrol(app: &AppHandle) {
         Act::Restore => {
             let n = session::restore_all(app, None);
             eprintln!("[switchboard] 区域恢复：已接回 {n} 个会话");
+            logfile::write("region", &format!("接回 {n} 个会话"));
         }
         Act::Ask => ask = true,
         Act::Nothing => {}
@@ -1210,6 +1214,7 @@ fn keep_alive_tick(app: &AppHandle) {
     let n = session::keep_alive(app, abnormal);
     if n > 0 {
         eprintln!("[switchboard] 保活：刷新了 {n} 个页签");
+        logfile::write("keep-alive", &format!("本轮刷新 {n} 个页签（abnormal={abnormal}）"));
     }
 }
 
@@ -1373,8 +1378,13 @@ fn reveal_download(path: String) -> Result<(), String> {
         .and_then(|p| p.canonicalize().ok())
         .filter(|p| p.is_file())
         .ok_or("文件不在了，可能被移走或删掉")?;
+    reveal_in_file_manager(&file)
+}
+
+/// 在系统文件管理器里选中一个文件。Windows 的 explorer 和 Linux 的 xdg-open 写法不一样。
+fn reveal_in_file_manager(file: &Path) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    let r = std::process::Command::new("open").arg("-R").arg(&file).spawn();
+    let r = std::process::Command::new("open").arg("-R").arg(file).spawn();
     // 资源管理器只认 /select,"路径" 这一种写法：整个参数被加上引号（路径有空格时 Rust 会这么做）它就不认了，
     // canonicalize 给的 \\?\ 前缀它也不认，所以手拼原样参数
     #[cfg(target_os = "windows")]
@@ -1386,8 +1396,23 @@ fn reveal_download(path: String) -> Result<(), String> {
     };
     // xdg-open 没有"选中文件"，打开所在目录
     #[cfg(target_os = "linux")]
-    let r = std::process::Command::new("xdg-open").arg(file.parent().unwrap_or(&file)).spawn();
+    let r = std::process::Command::new("xdg-open").arg(file.parent().unwrap_or(file)).spawn();
     r.map(|_| ()).map_err(|e| format!("打不开文件夹：{e}"))
+}
+
+/// 显示诊断日志（设置页的「在文件管理器中显示」）。日志只记事件，不含账号密码。
+#[tauri::command]
+fn reveal_log() -> Result<(), String> {
+    let path = logfile::path().ok_or("日志还没启用")?;
+    // 还没写过就建一个空文件，免得"显示"按钮点了没反应
+    if !path.exists() {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        std::fs::write(&path, b"").map_err(|e| format!("日志文件写不出来：{e}"))?;
+    }
+    let file = path.canonicalize().map_err(|e| format!("找不到日志文件：{e}"))?;
+    reveal_in_file_manager(&file)
 }
 
 #[derive(Serialize)]
@@ -1494,6 +1519,40 @@ fn set_sessions_visible(app: AppHandle, vault: State<Vault>, visible: bool) -> R
     // 锁着的时候保活的页面还开着（见 lock_down），前端怎么说都不能露出来盖在锁屏上
     let unlocked = vault.0.lock().map(|g| g.is_some()).unwrap_or(false);
     session::set_visible(&app, visible && unlocked)
+}
+
+/// 前端每次加载（包括 Windows WebView2 的 F5 / Ctrl+R 重载主窗口）都会先调一次。
+///
+/// 重载时 React 的 cleanup 不会执行，后端 `Sessions.visible` 还停在上次的 true：
+/// 账号页面会继续盖在解锁页/主界面上，把表单和按钮挡住，看起来就是 App 卡死。
+/// 这里无条件先藏起来，再把"内存里还有几个会话 / 库是不是已经解锁"告诉前端，
+/// 让它能在解锁页提示"上次的会话还在"。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UiBoot {
+    unlocked: bool,
+    sessions: usize,
+}
+
+#[tauri::command]
+fn ui_boot(app: AppHandle, vault: State<Vault>) -> UiBoot {
+    let _ = session::set_visible(&app, false);
+    let unlocked = vault.0.lock().map(|g| g.is_some()).unwrap_or(false);
+    let sessions = session::list(&app).map(|v| v.len()).unwrap_or(0);
+    logfile::write("webview", &format!("前端启动/重载：unlocked={unlocked} sessions={sessions}"));
+    UiBoot { unlocked, sessions }
+}
+
+/// 手动输入地址失败后换协议重试（https 站点其实是 http，或反过来）。
+#[tauri::command]
+fn retry_active_tab(app: AppHandle, account_id: String, scheme: String) -> Result<(), String> {
+    session::retry_scheme(&app, &account_id, &scheme)
+}
+
+/// 日志文件在哪（诊断用；前端把它放进「复制诊断信息」）。
+#[tauri::command]
+fn log_path() -> Option<String> {
+    logfile::path().map(|p| p.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -1829,6 +1888,9 @@ fn swap_in_backup(src: &std::path::Path, dst: &std::path::Path, replaced: &std::
 // ---------------------------------------------------------------- 入口
 
 pub fn run() {
+    // 先装 panic hook：后面任何线程 panic（release 是 abort）都要在日志里留下位置
+    logfile::install_panic_hook();
+
     tauri::Builder::default()
         // 只允许开一个实例。第二次启动时不新开窗口，把已经在跑的那个提到前台——
         // 多开会有两个进程同时抓同一个 SQLCipher 库和同一份 WebKit 数据仓，
@@ -1854,6 +1916,10 @@ pub fn run() {
         .setup(|app| {
             context_menu::install();
             let handle = app.handle().clone();
+            if let Ok(dir) = data_dir(&handle) {
+                logfile::init(&dir);
+            }
+            logfile::write("app", &format!("启动 v{} · {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS));
             if cfg!(debug_assertions) {
                 if let Some(w) = handle.get_webview_window("main") {
                     let _ = w.set_title("Switchboard（开发版 · 独立数据目录）");
@@ -1879,9 +1945,19 @@ pub fn run() {
             // 保活单独计时，避免 120 秒的快照周期把 3 分钟刷新拖成 4 分钟，
             // 也避免 WebKit 读取 cookie 较慢时连带阻塞保活。锁库不停止这条线程。
             let alive = app.handle().clone();
-            std::thread::spawn(move || loop {
-                std::thread::sleep(std::time::Duration::from_secs(15));
-                keep_alive_tick(&alive);
+            std::thread::spawn(move || {
+                let mut last = std::time::Instant::now();
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(15));
+                    let gap = last.elapsed().as_secs();
+                    last = std::time::Instant::now();
+                    // 15 秒的定时器睡出 60 秒以上，多半是刚从睡眠/挂起恢复（或系统时间被改）。
+                    // 这不是错误，但要留下时间点：第二天"保活为什么没生效"先看这条。
+                    if gap > 60 {
+                        logfile::write("keep-alive", &format!("定时器跳了 {gap} 秒（睡眠/挂起恢复？），补做一轮"));
+                    }
+                    keep_alive_tick(&alive);
+                }
             });
 
             // 区域哨兵：网络是会中途变的（VPN 自动重连、分流规则切换、换 Wi-Fi），
@@ -1934,12 +2010,16 @@ pub fn run() {
             clear_login,
             reload_session,
             set_sessions_visible,
+            ui_boot,
+            retry_active_tab,
+            log_path,
             select_session_tab,
             tab_history,
             find_in_page,
             open_url_in_session,
             open_in_system_browser,
             reveal_download,
+            reveal_log,
             get_download_settings,
             set_download_settings,
             move_download,

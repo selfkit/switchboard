@@ -78,6 +78,10 @@ export type TabInfo = {
   failed: boolean;
   /** 独立窗口的弹窗（window.open 带尺寸那种），点它是把那个窗口叫到前面 */
   external: boolean;
+  /** 用户手动输入打开的原始地址；页面自己开的页签是 null */
+  manual_url: string | null;
+  /** 原始输入没写协议头，协议是按主机猜的 */
+  scheme_implied: boolean;
 };
 
 export type SessionInfo = {
@@ -101,6 +105,12 @@ export type SessionInfo = {
   keep_alive: boolean;
   /** 网络异常时也照样保活；没勾的话区域检测判为异常就暂停 */
   keep_alive_any_network: boolean;
+  /** 上次保活刷新（navigate 成功）距今多少秒；没保活/还没刷过是 null */
+  keep_alive_last_secs: number | null;
+  /** 距离下一次保活还有多少秒 */
+  keep_alive_next_secs: number | null;
+  /** 上次保活失败的原因；成功一次就清空 */
+  keep_alive_error: string | null;
 };
 
 export const isInitialized = () => invoke<boolean>("is_initialized");
@@ -254,6 +264,19 @@ export const setDownloadSettings = (dir: string | null, ask: boolean) =>
 export const closeSessionTab = (accountId: string, index: number) =>
   invoke<void>("close_session_tab", { accountId, index });
 export const setSessionsVisible = (visible: boolean) => invoke<void>("set_sessions_visible", { visible });
+/**
+ * 前端每次启动/重载先调一次：后端把账号子 webview 全部藏起来，
+ * 并告诉前端内存里还有几个会话、库是不是已经解锁。
+ * Windows 上 F5 / Ctrl+R 会重载主窗口，不先复位的话账号页会盖住解锁表单。
+ */
+export const uiBoot = () => invoke<{ unlocked: boolean; sessions: number }>("ui_boot");
+/** 手动输入地址失败后换协议重试 */
+export const retryActiveTab = (accountId: string, scheme: "http" | "https") =>
+  invoke<void>("retry_active_tab", { accountId, scheme });
+/** 日志文件路径，放进「复制诊断信息」 */
+export const logPath = () => invoke<string | null>("log_path");
+/** 在文件管理器里选中日志文件 */
+export const revealLog = () => invoke<void>("reveal_log");
 /** 指认完成，后端已把选择器写回该平台的配置。载荷是平台名 */
 export const onSelectorsPicked = (f: (platform: string) => void) =>
   listen<string>("selectors-picked", (e) => f(e.payload));

@@ -61,6 +61,10 @@ pub struct TabInfo {
     pub failed: bool,
     /// 这是个独立窗口的弹窗（window.open 带尺寸的那种），不在主窗口那块地方
     pub external: bool,
+    /// 用户手动输入打开这个页签时的原始地址；页面自己开的页签是 None
+    pub manual_url: Option<String>,
+    /// 原始输入没写协议头，协议是按主机猜的
+    pub scheme_implied: bool,
 }
 
 /// 内存态：当前开着哪些隔离窗口。App 重启后清空。
@@ -86,4 +90,10 @@ pub struct SessionInfo {
     pub keep_alive: bool,
     /// 网络异常时也照样保活；关着的话区域检测判为异常就暂停
     pub keep_alive_any_network: bool,
+    /// 上次保活刷新（navigate 成功）距今多少秒。没保活/还没刷过是 None
+    pub keep_alive_last_secs: Option<u64>,
+    /// 距离下一次保活还有多少秒
+    pub keep_alive_next_secs: Option<u64>,
+    /// 上次保活失败的原因；成功一次就清空
+    pub keep_alive_error: Option<String>,
 }
