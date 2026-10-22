@@ -100,7 +100,7 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     const pass = makeFrame("passport", "https://passport.aliyun.com", top);
     const u = field(pass, "u"), p = field(pass, "p");
     runIn(top, () => top.window.__sb.autofill("#u", "#p", "alice", "s3cret", true));
-    await sleep(400);
+    await sleep(700);
     check("S1 autofill reaches same-site iframe (aliyun shape)", u._value === "alice" && p._value === "s3cret");
   }
   // S2: hostile cross-site iframe on the login page races to claim (and is earlier in frame order)
@@ -111,7 +111,7 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     hostile(evil);
     const u = field(pass, "u"), p = field(pass, "p");
     runIn(top, () => top.window.__sb.autofill("#u", "#p", "alice", "s3cret", true));
-    await sleep(400);
+    await sleep(700);
     check("S2 cross-site iframe cannot claim the password", !stole(evil));
     check("S2 honest iframe still gets filled", p._value === "s3cret");
   }
@@ -144,7 +144,7 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     const sb = makeFrame("sandbox", "null", top);
     hostile(sb);
     runIn(top, () => top.window.__sb.autofill("#u", "#p", "alice", "s3cret", true));
-    await sleep(400);
+    await sleep(700);
     check("S5 null-origin iframe cannot claim", !stole(sb));
   }
   // S6: heartbeat — trusted input from a child frame reaches IPC once (throttled); untrusted never
@@ -182,7 +182,7 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     const top = makeFrame("top", "https://console.zego.im", null);
     const u = field(top, "u"), p = field(top, "p");
     runIn(top, () => top.window.__sb.autofill("#u", "#p", "bob", "pw2", true));
-    await sleep(400);
+    await sleep(700);
     check("S8 autofill into main-document form", u._value === "bob" && p._value === "pw2");
   }
   // S9: recency the other way — iframe field first, then a main-document field: the main doc wins

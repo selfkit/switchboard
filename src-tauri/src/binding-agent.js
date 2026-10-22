@@ -6,7 +6,7 @@
   const top = window === window.top;
   const token = () => crypto.randomUUID();
   let documentId = token(), href = location.href, task = null, picking = null;
-  let pickTimer = 0, hint = null;
+  let pickTimer = 0, hint = null, heartbeat = 0, registered = false, lastReported = '', lastReportAt = 0, retryAt = 0;
   const page = () => {
     const u = new URL(location.href), queryEquals = {};
     // 一次性授权参数既不能稳定匹配，也不应进入绑定配置。
@@ -21,9 +21,13 @@
   };
   const matches = (expected, actual) => expected && expected.origin === actual.origin && expected.pathname === actual.pathname
     && expected.hashRoute === actual.hashRoute && Object.keys(expected.queryEquals).length === Object.keys(actual.queryEquals).length && Object.entries(expected.queryEquals).every(([k, v]) => actual.queryEquals[k] === v);
-  const report = event => {
-    if (top && window.__TAURI_INTERNALS__) return window.__TAURI_INTERNALS__.invoke('report_binding_event', { event }).catch(() => {});
+  // 给 hello 判断"注册成功没有"的版本；其他事件不关心结果，统一吞掉拒绝，免得
+  // 心跳/指认的失败变成未处理的 Promise。
+  const invokeReport = event => {
+    if (!top || !window.__TAURI_INTERNALS__) return null;
+    try { return window.__TAURI_INTERNALS__.invoke('report_binding_event', { event }); } catch (_) { return null; }
   };
+  const report = event => { const p = invokeReport(event); if (p && p.catch) p.catch(() => {}); };
   function sameSite(a, b) {
     try {
       a = new URL(a); b = new URL(b);
@@ -158,6 +162,9 @@
     t.timer = setTimeout(() => locate(t), 200);
   }
   function startLocate(m, parentOrigin) {
+    // 子 frame 不再每秒跑 hello，导航后靠这里把 documentId/href 对齐；
+    // apply 不能走这里：fresh() 要用旧 href 判出 stale_document。
+    refreshDocument();
     if (task && task.runId === m.runId && task.stepId === m.stepId) {
       if (task.ready) reply(task, 'ready');
       return;
@@ -198,6 +205,7 @@
     for (const f of frames()) post(f.e.contentWindow, f.origin, { op: 'pick', ...picking });
   }
   function startPick(m, parentOrigin) {
+    refreshDocument();
     if (picking && picking.pickId === m.pickId) return;
     clearTask(); stopPick();
     picking = { pickId: m.pickId, document: m.document, until: m.until || Date.now() + 60000, parentOrigin };
@@ -254,9 +262,36 @@
   function refreshDocument() {
     if (href !== location.href) { clearTask(); stopPick(); documentId = token(); href = location.href; }
   }
+  // 文档没变时不要每秒都报：每次上报在 Rust 侧是一次账号库查询 + 一次前端
+  // bindings-changed 事件，保活页面锁屏期间会一直空转。只有文档变了、还没注册成功、
+  // 或者低频心跳（30 秒）才上报。失败分两种：页面还没登记（1 秒后重试，别拖慢
+  // 首次自动填写）和账号库锁着（10 秒后再试，别让保活页面空转）。
+  const REPORT_EVERY_MS = 30000;
+  const RETRY_MS = 1000;
+  const LOCKED_RETRY_MS = 10000;
   function hello() {
+    if (!top) return;
     refreshDocument();
-    if (top && /^https?:$/.test(location.protocol)) report({ kind: 'document', document: documentId, page: page() });
+    if (!/^https?:$/.test(location.protocol)) return;
+    const now = Date.now();
+    const changed = documentId !== lastReported;
+    if (!changed && registered && now - lastReportAt < REPORT_EVERY_MS) return;
+    if (!changed && !registered && now < retryAt) return;
+    lastReported = documentId;
+    lastReportAt = now;
+    // 先乐观地当成注册成功：Promise 的 then 是微任务，正常会在下一次 1 秒心跳前跑完；
+    // 失败时再翻回 false：页面还没登记就 1 秒后重试，账号库锁着则退 10 秒。
+    registered = true;
+    const p = invokeReport({ kind: 'document', document: documentId, page: page() });
+    if (p && p.then) {
+      p.then(
+        () => { registered = true; },
+        e => {
+          registered = false;
+          retryAt = Date.now() + (String(e).includes('未解锁') ? LOCKED_RETRY_MS : RETRY_MS);
+        },
+      );
+    }
   }
   window.__sbBindings = { hello, command(m) {
     if (!top || !m) return;
@@ -268,8 +303,21 @@
     else if (m.op === 'locate') startLocate(m);
     else if (m.op === 'apply') apply(m);
   } };
-  window.addEventListener('pagehide', () => { clearTask(); stopPick(); });
+  window.addEventListener('pagehide', () => {
+    clearTask(); stopPick();
+    // 进 bfcache 后定时器还活着的话，旧文档会继续上报、继续占内存；停掉，恢复时再起。
+    if (heartbeat) { clearInterval(heartbeat); heartbeat = 0; }
+  });
+  window.addEventListener('pageshow', e => {
+    if (!top) return;
+    if (!heartbeat) heartbeat = setInterval(hello, 1000);
+    // 从 bfcache 回来时后端状态可能已经变了，强制重报一次；普通首次 pageshow 不重复报。
+    if (e && e.persisted) { registered = false; hello(); }
+  });
   // SPA 路由不触发原生 on_page_load；同时覆盖首次初始化早于会话登记的情况。
-  setInterval(hello, 1000);
-  hello();
+  // 只在顶层起心跳：所有 frame 都注入这份脚本，但子 frame 不需要每秒跑 hello。
+  if (top) {
+    heartbeat = setInterval(hello, 1000);
+    hello();
+  }
 })();

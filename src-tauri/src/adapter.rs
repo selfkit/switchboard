@@ -479,13 +479,19 @@ pub fn agent_js() -> &'static str {
     },
     // 按平台配置自动填充。页面是异步渲染的，而且用户可能还停在扫码 tab，所以轮询 30 秒
     autofill: function (uSel, pSel, uVal, pVal, change) {
-      var tries = 0;
-      var timer = setInterval(function () {
-        if (++tries > 120) { clearInterval(timer); return; }
-        ask({ kind: 'pair', u: uSel, p: pSel }, [uVal, pVal], '账号密码', change, function () {
-          clearInterval(timer);
-        }, null);
-      }, 250);
+      var tries = 0, timer = 0;
+      // 登录表单通常几秒内就渲染出来。以前 120 次 × 250ms = 30 秒，保活每 3 分钟
+      // 刷新一次都要跑满；控制台登录态正常时全是空转。20 秒足够，也少一大截 DOM 遍历。
+      function done() {
+        var id = timer;
+        if (id) clearInterval(id);
+        timer = 0;
+        autoTimers = autoTimers.filter(function (x) { return x !== id; });
+      }
+      timer = setInterval(function () {
+        if (++tries > 40) { done(); return; }
+        ask({ kind: 'pair', u: uSel, p: pSel }, [uVal, pVal], '账号密码', change, done, null);
+      }, 500);
       autoTimers.push(timer);
     },
     pick: function (on) {

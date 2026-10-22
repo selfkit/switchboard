@@ -577,16 +577,26 @@ pub fn report(app: &AppHandle, webview: &Webview, event: Event) -> Result<(), St
                 .map_err(|e| e.to_string())?
                 .get(label)
                 .map_or(true, |v| v.document != document);
-            if changed {
-                cancel(app, label, "stale_document");
+            // 页面脚本每 30 秒会发一次心跳确认"还是这个文档"。没变就什么都不做：
+            // 以前这里每次都跑一遍自动填写查询、再推一次 bindings-changed，
+            // 等于每个保活页面每分钟白查好几次库、让前端跟着重渲染。
+            if !changed {
+                // 指认有 60 秒有效期；心跳顺便把过期的指认清掉，但别的什么都不做。
+                if let Ok(mut m) = app.state::<Bindings>().0.lock() {
+                    if let Some(v) = m.get_mut(label) {
+                        if v.pick.as_ref().is_some_and(|(_, t)| t.elapsed().as_secs() >= 60) {
+                            v.pick = None;
+                        }
+                    }
+                }
+                return Ok(());
             }
+            cancel(app, label, "stale_document");
             {
                 let state = app.state::<Bindings>();
                 let mut m = state.0.lock().map_err(|e| e.to_string())?;
                 let v = m.entry(label.into()).or_default();
-                if changed {
-                    v.attempted.clear();
-                }
+                v.attempted.clear();
                 if v.pick.as_ref().is_some_and(|(_, t)| t.elapsed().as_secs() >= 60) {
                     v.pick = None;
                 }

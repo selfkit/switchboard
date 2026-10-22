@@ -159,4 +159,16 @@ test('新增 action 等页面查询条件不复用原绑定', () => {
   within(top, () => top.window.__sbBindings.hello());
   locate(top, original); assert.equal(code(top), 'page_mismatch'); assert.equal(input.value, '');
 });
+test('文档没变时不再每秒上报，只保留 30 秒心跳', () => {
+  const top = frame();
+  const count = () => top.reports.filter(e => e.kind === 'document').length;
+  const initial = count();
+  tick(5000);
+  assert.equal(count(), initial, '5 秒内不应重复上报文档');
+  tick(26000);
+  assert.equal(count(), initial + 1, '30 秒一次低频心跳');
+  top.window.location = new URL('https://console.example.com/next');
+  within(top, () => top.window.__sbBindings.hello());
+  assert.equal(count(), initial + 2, 'SPA 路由变了要立刻上报');
+});
 console.log('ALL PASS');

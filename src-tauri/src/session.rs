@@ -235,6 +235,24 @@ impl SessionState {
         self.tabs.iter_mut().find(|t| t.label == label)
     }
 
+    /// 保活这一轮该刷哪个页签。只刷一个：
+    /// - 优先账号主页面（tabs[0]，登录直达页，最可能真正调后端接口续期）；
+    /// - 主页面不可刷（被切断 / 正在加载 / 下载页）时退回当前页签；
+    /// - 再不行挑任意一个能刷的。
+    ///
+    /// 以前每个页签都刷：账号里页签一多，每 3 分钟就在同一刻重载一堆页面，
+    /// 内存和 CPU 都会出现尖峰。账号级登录态刷一页就够了。
+    fn keep_alive_tab(&self) -> Option<&Tab> {
+        self.tabs
+            .first()
+            .filter(|t| t.keep_alive_target())
+            .or_else(|| {
+                let active = self.active();
+                active.keep_alive_target().then_some(active)
+            })
+            .or_else(|| self.tabs.iter().find(|t| t.keep_alive_target()))
+    }
+
     /// 页签里的下载开始了。这个页签要是页面刚开出来、第一次导航就变成了下载（`window.open` /
     /// `target=_blank` 指向一个下载地址），它里面什么都不会有：WebKit 把导航转成下载后既不报"提交"也不报"加载完成"，
     /// 不管的话 12 秒后被加载超时判成"打不开"，整块区域变成错误提示——看上去就是"一下载页面就崩了"。
@@ -1764,6 +1782,13 @@ pub fn cuttable(app: &AppHandle) -> bool {
     app.state::<Sessions>().map.lock().map(|m| m.values().any(|s| s.cuttable())).unwrap_or(false)
 }
 
+/// 当前打开几个账号、几个页签。日志里用来观察"页签是不是越开越多"。
+pub fn counts(app: &AppHandle) -> (usize, usize) {
+    let sessions = app.state::<Sessions>();
+    let Ok(map) = sessions.map.lock() else { return (0, 0) };
+    (map.len(), map.values().map(|s| s.tabs.len()).sum())
+}
+
 /// 当前有没有页面处于被切断状态
 pub fn any_cut(app: &AppHandle) -> bool {
     app.state::<Sessions>()
@@ -1792,7 +1817,9 @@ pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
                 continue;
             }
             s.alive_at = KeepAliveClock::now();
-            labels.extend(s.tabs.iter().filter(|t| t.keep_alive_target()).map(|t| (t.label.clone(), t.url_is_safe())));
+            if let Some(t) = s.keep_alive_tab() {
+                labels.push((t.label.clone(), t.url_is_safe()));
+            }
         }
         labels
     };
@@ -2216,6 +2243,29 @@ mod tests {
         let mut dl = tab("dl", true, false, None);
         dl.download_only = true;
         assert!(!dl.keep_alive_target());
+    }
+
+    #[test]
+    fn keep_alive_refreshes_only_one_tab_per_account() {
+        let mut s = SessionState {
+            tabs: vec![tab("main", true, false, None), tab("second", true, false, None)],
+            active_tab: 1,
+            next_seq: 3,
+            platform: String::new(),
+            related_app: String::new(),
+            opened_at: Instant::now(),
+            keep_alive: Some(false),
+            alive_at: KeepAliveClock::now(),
+            login_url: String::new(),
+            last_keep_alive: None,
+            keep_alive_error: None,
+        };
+        assert_eq!(s.keep_alive_tab().map(|t| t.label.as_str()), Some("main"), "优先账号主页面");
+        s.tabs[0].cut = true;
+        assert_eq!(s.keep_alive_tab().map(|t| t.label.as_str()), Some("second"), "主页面不可刷就退回当前页签");
+        s.tabs[1].loaded.store(false, Ordering::Relaxed);
+        s.tabs[1].nav_at = Instant::now();
+        assert!(s.keep_alive_tab().is_none(), "正在加载的页签不打断");
     }
 
     #[test]

@@ -35,7 +35,9 @@ export default function BindingPanel({ account, tabLabel, ready }: { account: ap
     const fetch = () => { api.bindingState(account.id, tabLabel).then(s => { if (alive) setState(s); }).catch(() => { if (alive) setState(null); }); };
     fetch();
     const un = api.onBindingsChanged(fetch);
-    const timer = setInterval(fetch, 2000);
+    // 主要靠 bindings-changed 事件；这个轮询只是兜底，5 秒一次足够，
+    // 之前 2 秒一次会在会话页常驻时反复查库。
+    const timer = setInterval(fetch, 5000);
     return () => { alive = false; clearInterval(timer); void un.then(f => f()); };
   }, [account.id, tabLabel]);
   const action = async (fn: () => Promise<unknown>) => {

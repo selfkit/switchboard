@@ -164,6 +164,8 @@ export default function SessionsPage({
   }, [current?.id]);
   const currentInfo = current ? byId.get(current.id) : undefined;
   const currentState = current ? stateOf(current.id) : "off";
+  /** 所有已打开账号的页签总数。内存涨的时候先看这个数是不是在变大 */
+  const tabCount = useMemo(() => sessions.reduce((n, s) => n + s.tabs.length, 0), [sessions]);
   /** 当前页签。失败页/换协议重试都看它 */
   const activeTab = currentInfo?.tabs[currentInfo.active_tab];
   /** 手动输入的地址按 https 开的就建议 http，反之亦然 */
@@ -290,6 +292,7 @@ export default function SessionsPage({
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ fontSize: 11, color: C.muted, padding: "0 8px" }}>账号 · {online.size} 个已打开 / {accounts.length} 个</div>
+        <div style={{ fontSize: 10, color: C.muted, padding: "0 8px", marginTop: -4 }}>共 {tabCount} 个页签</div>
         <Button onClick={onAdd} style={{ padding: "7px 10px", fontSize: 11 }}>+ 新增账号</Button>
         <input
           type="search"

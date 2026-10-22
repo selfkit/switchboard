@@ -1213,8 +1213,12 @@ fn keep_alive_tick(app: &AppHandle) {
     power::sync(app);
     let n = session::keep_alive(app, abnormal);
     if n > 0 {
-        eprintln!("[switchboard] 保活：刷新了 {n} 个页签");
-        logfile::write("keep-alive", &format!("本轮刷新 {n} 个页签（abnormal={abnormal}）"));
+        let (sessions, tabs) = session::counts(app);
+        eprintln!("[switchboard] 保活：刷新了 {n} 个账号的保活页签");
+        logfile::write(
+            "keep-alive",
+            &format!("本轮刷新 {n} 个账号的保活页签；当前 {sessions} 个账号 / {tabs} 个页签（abnormal={abnormal}）"),
+        );
     }
 }
 
