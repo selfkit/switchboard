@@ -1,0 +1,257 @@
+{
+  "auditedAt": "2026-10-22",
+  "sourceCommit": "42ad7ac",
+  "interpretation": "Version/advisory matches, not confirmed exploitability. See AUDIT-2026-10-22.md for target, feature and trigger analysis.",
+  "npm": {
+    "command": "pnpm audit --json",
+    "severityCounts": {
+      "info": 0,
+      "low": 1,
+      "moderate": 6,
+      "high": 3,
+      "critical": 0
+    },
+    "matches": [
+      {
+        "module": "esbuild",
+        "lockedVersion": "0.21.5",
+        "severity": "moderate",
+        "advisoryId": "GHSA-67mh-4wv8-2f99",
+        "url": "https://github.com/advisories/GHSA-67mh-4wv8-2f99",
+        "vulnerableVersions": "<=0.24.2",
+        "patchedVersions": ">=0.25.0",
+        "dependencyPaths": [
+          ".>vite>esbuild"
+        ]
+      },
+      {
+        "module": "vite",
+        "lockedVersion": "5.4.21",
+        "severity": "moderate",
+        "advisoryId": "GHSA-4w7w-66w2-5vf9",
+        "url": "https://github.com/advisories/GHSA-4w7w-66w2-5vf9",
+        "vulnerableVersions": "<=6.4.1",
+        "patchedVersions": ">=6.4.2",
+        "dependencyPaths": [
+          ".>vite"
+        ]
+      },
+      {
+        "module": "vite",
+        "lockedVersion": "5.4.21",
+        "severity": "moderate",
+        "advisoryId": "GHSA-v6wh-96g9-6wx3",
+        "url": "https://github.com/advisories/GHSA-v6wh-96g9-6wx3",
+        "vulnerableVersions": "<=6.4.2",
+        "patchedVersions": ">=6.4.3",
+        "dependencyPaths": [
+          ".>vite"
+        ]
+      },
+      {
+        "module": "vite",
+        "lockedVersion": "5.4.21",
+        "severity": "high",
+        "advisoryId": "GHSA-fx2h-pf6j-xcff",
+        "url": "https://github.com/advisories/GHSA-fx2h-pf6j-xcff",
+        "vulnerableVersions": "<=6.4.2",
+        "patchedVersions": ">=6.4.3",
+        "dependencyPaths": [
+          ".>vite"
+        ]
+      },
+      {
+        "module": "source-map-js",
+        "lockedVersion": "1.2.1",
+        "severity": "high",
+        "advisoryId": "GHSA-68fv-2mgg-jv7q",
+        "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q",
+        "vulnerableVersions": ">=1.0.0 <1.2.2",
+        "patchedVersions": ">=1.2.2",
+        "dependencyPaths": [
+          ".>vite>postcss>source-map-js"
+        ]
+      },
+      {
+        "module": "vite",
+        "lockedVersion": "5.4.21",
+        "severity": "moderate",
+        "advisoryId": "GHSA-698v-4r3x-3vcv",
+        "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv",
+        "vulnerableVersions": "<=6.4.3",
+        "patchedVersions": ">=6.4.4",
+        "dependencyPaths": [
+          ".>vite"
+        ]
+      },
+      {
+        "module": "vite",
+        "lockedVersion": "5.4.21",
+        "severity": "moderate",
+        "advisoryId": "GHSA-r825-w8mm-5pxw",
+        "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw",
+        "vulnerableVersions": "<=6.4.3",
+        "patchedVersions": ">=6.4.4",
+        "dependencyPaths": [
+          ".>vite"
+        ]
+      },
+      {
+        "module": "vite",
+        "lockedVersion": "5.4.21",
+        "severity": "high",
+        "advisoryId": "GHSA-587h-7wmj-h5pm",
+        "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm",
+        "vulnerableVersions": "<=6.4.3",
+        "patchedVersions": ">=6.4.4",
+        "dependencyPaths": [
+          ".>vite"
+        ]
+      },
+      {
+        "module": "vite",
+        "lockedVersion": "5.4.21",
+        "severity": "low",
+        "advisoryId": "GHSA-9jrq-w75r-8gcw",
+        "url": "https://github.com/advisories/GHSA-9jrq-w75r-8gcw",
+        "vulnerableVersions": "<=6.4.3",
+        "patchedVersions": ">=6.4.4",
+        "dependencyPaths": [
+          ".>vite"
+        ]
+      },
+      {
+        "module": "vite",
+        "lockedVersion": "5.4.21",
+        "severity": "moderate",
+        "advisoryId": "GHSA-rq7h-c2jc-7f22",
+        "url": "https://github.com/advisories/GHSA-rq7h-c2jc-7f22",
+        "vulnerableVersions": "<=6.4.3",
+        "patchedVersions": ">=6.4.4",
+        "dependencyPaths": [
+          ".>vite"
+        ]
+      }
+    ]
+  },
+  "rust": {
+    "method": "OSV querybatch using registry package names and versions from Cargo.lock; RustSec primary advisories and cargo tree reviewed. cargo-audit was not installed.",
+    "queriedRegistryPackages": 556,
+    "matchedPackageVersions": 15,
+    "matches": [
+      {
+        "name": "glib",
+        "version": "0.18.5",
+        "advisoryIds": [
+          "GHSA-wrw7-89jp-8q8g",
+          "RUSTSEC-2024-0429"
+        ]
+      },
+      {
+        "name": "proc-macro-error",
+        "version": "1.0.4",
+        "advisoryIds": [
+          "RUSTSEC-2024-0370"
+        ]
+      },
+      {
+        "name": "quinn-proto",
+        "version": "0.11.17",
+        "advisoryIds": [
+          "RUSTSEC-2026-0338",
+          "RUSTSEC-2026-0340",
+          "RUSTSEC-2026-0343"
+        ]
+      },
+      {
+        "name": "rustls",
+        "version": "0.23.45",
+        "advisoryIds": [
+          "RUSTSEC-2026-0346",
+          "RUSTSEC-2026-0347",
+          "RUSTSEC-2026-0348",
+          "RUSTSEC-2026-0349"
+        ]
+      },
+      {
+        "name": "rustls-webpki",
+        "version": "0.103.15",
+        "advisoryIds": [
+          "RUSTSEC-2026-0382"
+        ]
+      },
+      {
+        "name": "unic-char-property",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0081"
+        ]
+      },
+      {
+        "name": "unic-char-range",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0075"
+        ]
+      },
+      {
+        "name": "unic-common",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0080"
+        ]
+      },
+      {
+        "name": "unic-ucd-ident",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0100"
+        ]
+      },
+      {
+        "name": "unic-ucd-version",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0098"
+        ]
+      },
+      {
+        "name": "webpki-root-certs",
+        "version": "1.0.9",
+        "advisoryIds": [
+          "RUSTSEC-2026-0383"
+        ]
+      },
+      {
+        "name": "zbus_names",
+        "version": "4.3.4",
+        "advisoryIds": [
+          "RUSTSEC-2026-0371"
+        ]
+      },
+      {
+        "name": "zip",
+        "version": "4.6.1",
+        "advisoryIds": [
+          "RUSTSEC-2026-0367",
+          "RUSTSEC-2026-0368",
+          "RUSTSEC-2026-0369"
+        ]
+      },
+      {
+        "name": "zvariant",
+        "version": "5.15.0",
+        "advisoryIds": [
+          "RUSTSEC-2026-0370"
+        ]
+      },
+      {
+        "name": "zvariant_derive",
+        "version": "5.15.0",
+        "advisoryIds": [
+          "RUSTSEC-2026-0372"
+        ]
+      }
+    ]
+  }
+}
