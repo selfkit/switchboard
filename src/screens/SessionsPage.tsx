@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { save } from "@tauri-apps/plugin-dialog";
 import * as api from "../api";
 import type { Account, SessionInfo } from "../api";
-import { Button, C, FILE_MANAGER, MOD, copySecret, copyText } from "../ui";
+import { Button, C, MOD, copySecret, copyText } from "../ui";
 import BindingPanel from "./BindingPanel";
 import { Sidebar, SideNav, TABS_H, type Page } from "./Layout";
 
@@ -41,8 +40,6 @@ export default function SessionsPage({
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [tip, setTip] = useState("");
-  /** 最近一次下载成功的文件，点提示条在访达里选中它 */
-  const [dl, setDl] = useState<{ name: string; path: string } | null>(null);
   const [query, setQuery] = useState("");
   const [onlyOnline, setOnlyOnline] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -87,34 +84,6 @@ export default function SessionsPage({
     const un = api.onTabOpenFailed((reason) => {
       setTip("");
       setErr(`新页签打不开：${reason}`);
-    });
-    return () => {
-      void un.then((f) => f());
-    };
-  }, []);
-
-  // 页签里的下载。落盘位置是后端定的（设置里选的下载文件夹），这里报一声在哪、给个一点就能找到的入口，
-  // 否则用户只看到"下完了"却不知道文件去了哪
-  useEffect(() => {
-    const un = api.onDownloadFinished(async (d) => {
-      if (!d.success) {
-        setTip("");
-        setErr(`下载失败：${d.name || "文件"}`);
-        return;
-      }
-      if (!d.ask) return setDl(d);
-      // 「每次都问」：文件已经落在下载文件夹里了，再问存到哪、挪过去（为什么不先问见 lib.rs 的 move_download）。
-      // 点取消就留在原地，照常提示
-      const to = await save({ title: `保存「${d.name}」`, defaultPath: d.path }).catch(() => null);
-      if (!to) return setDl(d);
-      try {
-        const path = await api.moveDownload(d.path, to);
-        setDl({ name: path.split(/[\\/]/).pop() || d.name, path });
-      } catch (e) {
-        setDl(d);
-        setTip("");
-        setErr(String(e));
-      }
     });
     return () => {
       void un.then((f) => f());
@@ -259,18 +228,6 @@ export default function SessionsPage({
         <>
           {/* 提示条钉在底部导航上方，不跟账号列表一起滚：账号一多它就被挤出可视区，
               右上角按钮点了、报错了，用户看到的却是"没反应" */}
-          {dl && (
-            <div
-              onClick={() => {
-                setDl(null);
-                api.revealDownload(dl.path).catch((e) => setErr(String(e)));
-              }}
-              title={dl.path}
-              style={{ ...toastStyle, background: C.brandSoft, color: C.brand }}
-            >
-              已下载「{dl.name}」· 点这里在{FILE_MANAGER}中显示
-            </div>
-          )}
           {(tip || err) && (
             <div
               onClick={() => {

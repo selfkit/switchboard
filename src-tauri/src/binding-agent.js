@@ -4,7 +4,12 @@
   if (window.__sbBindings) return;
   const CHANNEL = '__switchboardBindingsV1';
   const top = window === window.top;
-  const token = () => crypto.randomUUID();
+  const token = () => {
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  };
   let documentId = token(), href = location.href, task = null, picking = null;
   let pickTimer = 0, hint = null, heartbeat = 0, registered = false, lastReported = '', lastReportAt = 0, retryAt = 0;
   const page = () => {
@@ -29,14 +34,7 @@
   };
   const report = event => { const p = invokeReport(event); if (p && p.catch) p.catch(() => {}); };
   function sameSite(a, b) {
-    try {
-      a = new URL(a); b = new URL(b);
-      if (a.protocol !== b.protocol || !['http:', 'https:'].includes(a.protocol)) return false;
-      const host = u => u.hostname.replace(/\.$/, '').toLowerCase();
-      const site = h => { const p = h.split('.'); return p.slice(p.length > 2 && p[p.length - 1].length === 2 && /^(com|net|org|gov|edu|co|ac)$/.test(p[p.length - 2]) ? -3 : -2).join('.'); };
-      if (!host(a).includes('.') || /^[\d.]+$/.test(host(a)) || host(a).includes(':')) return a.origin === b.origin;
-      return site(host(a)) === site(host(b));
-    } catch (_) { return false; }
+    return !!window.__sbOriginAllowed && window.__sbOriginAllowed(a, b);
   }
   function post(to, origin, payload) {
     if (origin && origin !== 'null') to.postMessage({ [CHANNEL]: true, ...payload }, origin);

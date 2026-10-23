@@ -1,0 +1,100 @@
+{
+  "checkedAt": "2026-10-23",
+  "npm": {
+    "severityCounts": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0
+    },
+    "matches": []
+  },
+  "rust": {
+    "method": "OSV querybatch; matches are not confirmation of runtime exploitability",
+    "queriedRegistryPackages": 556,
+    "matchedPackageVersions": 11,
+    "matches": [
+      {
+        "name": "glib",
+        "version": "0.18.5",
+        "advisoryIds": [
+          "GHSA-wrw7-89jp-8q8g",
+          "RUSTSEC-2024-0429"
+        ]
+      },
+      {
+        "name": "proc-macro-error",
+        "version": "1.0.4",
+        "advisoryIds": [
+          "RUSTSEC-2024-0370"
+        ]
+      },
+      {
+        "name": "unic-char-property",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0081"
+        ]
+      },
+      {
+        "name": "unic-char-range",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0075"
+        ]
+      },
+      {
+        "name": "unic-common",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0080"
+        ]
+      },
+      {
+        "name": "unic-ucd-ident",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0100"
+        ]
+      },
+      {
+        "name": "unic-ucd-version",
+        "version": "0.9.0",
+        "advisoryIds": [
+          "RUSTSEC-2025-0098"
+        ]
+      },
+      {
+        "name": "zbus_names",
+        "version": "4.3.4",
+        "advisoryIds": [
+          "RUSTSEC-2026-0371"
+        ]
+      },
+      {
+        "name": "zip",
+        "version": "4.6.1",
+        "advisoryIds": [
+          "RUSTSEC-2026-0367",
+          "RUSTSEC-2026-0368",
+          "RUSTSEC-2026-0369"
+        ]
+      },
+      {
+        "name": "zvariant",
+        "version": "5.15.0",
+        "advisoryIds": [
+          "RUSTSEC-2026-0370"
+        ]
+      },
+      {
+        "name": "zvariant_derive",
+        "version": "5.15.0",
+        "advisoryIds": [
+          "RUSTSEC-2026-0372"
+        ]
+      }
+    ]
+  }
+}

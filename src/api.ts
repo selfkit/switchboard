@@ -247,7 +247,10 @@ export const openInSystemBrowser = (url: string) => invoke<void>("open_in_system
 export const onTabOpenFailed = (f: (reason: string) => void) =>
   listen<string>("tab-open-failed", (e) => f(e.payload));
 /** 页签里的下载完成（落在设置里选的下载文件夹，重名自动加 -2）。ask = 设置里开了「每次都问」 */
-export type DownloadDone = { name: string; path: string; success: boolean; ask: boolean };
+export type DownloadDone = { id: number; name: string; path: string; success: boolean; ask: boolean };
+export const pendingDownloads = () => invoke<DownloadDone[]>("pending_downloads");
+export const acknowledgeDownload = (id: number) => invoke<void>("acknowledge_download", { id });
+export const onQuickSwitch = (f: () => void) => listen("quick-switch", f);
 export const onDownloadFinished = (f: (d: DownloadDone) => void) =>
   listen<DownloadDone>("download-finished", (e) => f(e.payload));
 /** 在访达里选中下载好的文件。只认这次运行里本 App 下载 / 另存过的文件 */

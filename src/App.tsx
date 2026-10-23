@@ -9,6 +9,7 @@ import Settings from "./screens/Settings";
 import PlatformConfigScreen from "./screens/PlatformConfig";
 import AdaptHelp from "./screens/AdaptHelp";
 import SessionsPage from "./screens/SessionsPage";
+import DownloadCenter from "./screens/DownloadCenter";
 import { CopyGate, QuickSwitch, TotpCode } from "./screens/Overlays";
 import { RegionAlarm, RegionBlocked } from "./screens/RegionGuard";
 import { AppShell, type Page, type SubPageShell } from "./screens/Layout";
@@ -136,7 +137,7 @@ export default function App() {
 
   // 长时间不操作自动锁回登录页。"空闲了多久"问后端要（`api.idleSecs`）：
   // 账号页面（会话页右侧）是独立的原生 webview，里面的操作不会冒泡到这儿，
-  // 得靠 adapter.rs 注入的脚本把心跳报给后端，两边共用同一份时钟（睡眠也算在内）。
+  // 由原生输入事件统一计时，远端页面不能给空闲时间续期（睡眠也算在内）。
   // 解锁时后端已经重新起算，这里不用先 touch 一次。
   useEffect(() => {
     if (!unlocked || autoLockSecs <= 0) return;
@@ -397,7 +398,7 @@ export default function App() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && unlocked && screen.name !== "form") {
         e.preventDefault();
-        setOverlay((o) => (o.name === "quickswitch" ? { name: "none" } : { name: "quickswitch" }));
+        setOverlay(o => o.name === "alarm" || o.name === "copy" ? o : { name: "quickswitch" });
       } else if (e.key === "Escape") {
         // 区域告警不给 Esc 关：页面已经被断了，随手关掉只剩一片白板，
         // 用户反而不知道发生了什么。必须走框里那两个明确的出口
@@ -414,6 +415,13 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [unlocked, screen.name]);
+
+  useEffect(() => {
+    const un = api.onQuickSwitch(() => {
+      if (unlocked && screen.name !== "form") setOverlay(o => o.name === "alarm" || o.name === "copy" ? o : { name: "quickswitch" });
+    });
+    return () => { void un.then(f => f()); };
   }, [unlocked, screen.name]);
 
   const overlays = (
@@ -602,6 +610,7 @@ export default function App() {
     <AppShell split={screen.name === "main" || screen.name === "sessions" || screen.name === "sub"} demo={unlocked && api.inDemo()} tour={tour} onStopTour={() => { tourStop.current = true; }} region={region} checking={checkingRegion} notice={regionNotice} onCheck={() => void checkNetwork()} onDismiss={() => setRegionNotice("")}>
       {page()}
       {overlays}
+      <DownloadCenter unlocked={unlocked} />
     </AppShell>
   );
 }

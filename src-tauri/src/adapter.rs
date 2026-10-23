@@ -36,8 +36,9 @@ pub fn agent_js() -> &'static str {
   var last = null;      // 这一帧里用户最后点过的输入框
   var lastAt = 0;       // 点它的时间。好几帧都记着"最后点过的框"时，靠它挑最近的那帧
   var waiting = null;   // 已认领、正等主文档把值发下来的元素
+  var pickNonce = null;
   var picking = false, picked = [], badges = [], tip = null;
-  var seq = 0, jobs = {}, pickTimer = 0, autoTimers = [];
+  var seq = 0, jobs = {}, pickTimer = 0, pickExpiry = 0, autoTimers = [];
 
   // Shadow DOM 里 e.target 是宿主元素，composedPath()[0] 才是真正被点的那个
   function hit(e) {
@@ -77,6 +78,14 @@ pub fn agent_js() -> &'static str {
     }
     return el;
   }
+  function automaticPair(u, p) {
+    function safe(el) {
+      return el && el.tagName === 'INPUT' && !el.disabled && !el.readOnly && !el.value
+        && !/(^|\s)new-password(\s|$)/i.test(el.getAttribute('autocomplete') || '');
+    }
+    return u !== p && safe(u) && safe(p) && p.type === 'password'
+      && ['text', 'email', 'tel', ''].indexOf(u.type || '') !== -1;
+  }
   function setVal(el, v, fireChange) {
     if (el.isContentEditable) {
       el.textContent = v;
@@ -115,23 +124,8 @@ pub fn agent_js() -> &'static str {
   function reply(e, msg) {
     try { e.source.postMessage(msg, e.origin && e.origin !== 'null' ? e.origin : '*'); } catch (err) {}
   }
-  // 近似"同一个站"：协议 + 最后两段域名（com.cn、co.uk 这类取三段）。
-  // IP、IPv6 和单段主机名没有"站"的概念，返回空串，只认完全同源。跟 session.rs 的 fill_allowed 同一套规则。
-  // ponytail: 没带公共后缀表，github.io 这种多租户后缀会被当成一个站；登录页真在那种域名上再换
-  function site(origin) {
-    var u;
-    try { u = new URL(origin); } catch (err) { return ''; }
-    var h = u.hostname, p = h.split('.'), n = p.length;
-    if (n < 2 || h.charAt(0) === '[' || /^\d+$/.test(p[n - 1])) return '';
-    var take = n > 2 && p[n - 1].length === 2 && /^(com|net|org|gov|edu|co|ac)$/.test(p[n - 2]) ? 3 : 2;
-    return u.protocol + '//' + p.slice(n - take).join('.');
-  }
-  // 只有跟主文档同站的帧才能认领账号密码。广播是发给所有 iframe 的，
-  // 不挡的话页面上随便一个广告/统计 iframe 抢着回一句"我有框"就能把密码领走
   function sameSite(origin) {
-    if (origin !== 'null' && origin === location.origin) return true;
-    var s = site(origin);
-    return s !== '' && s === site(location.origin);
+    return !!window.__sbOriginAllowed && window.__sbOriginAllowed(location.origin, origin);
   }
 
   function pathIn(root, el) {
@@ -186,7 +180,9 @@ pub fn agent_js() -> &'static str {
     picked.forEach(function (el) { el.style.outline = ''; });
     picked = [];
   }
-  function setPicking(on) {
+  function setPicking(on, nonce) {
+    if (on && nonce !== pickNonce) { picking = false; clearPicks(); }
+    pickNonce = on ? nonce : null;
     if (picking === on) return;   // 重复广播不能把已经标好的 1、2 抹掉
     picking = on;
     clearPicks();
@@ -204,11 +200,11 @@ pub fn agent_js() -> &'static str {
   // 回传成败都要飘一条：指认没有"确定"按钮，页面上不说话用户根本不知道记没记下来
   function report(u, p) {
     if (!TOP) {
-      try { window.top.postMessage({ __sb: 1, t: 'picked', u: u, p: p }, '*'); } catch (e) {}
+      try { window.top.postMessage({ __sb: 1, t: 'picked', u: u, p: p, nonce: pickNonce }, '*'); } catch (e) {}
       return;
     }
     try {
-      var r = window.__TAURI_INTERNALS__.invoke('report_picked_selectors', { usernameSelector: u, passwordSelector: p });
+      var r = window.__TAURI_INTERNALS__.invoke('report_picked_selectors', { usernameSelector: u, passwordSelector: p, nonce: pickNonce });
       if (r && r.then) {
         r.then(function () { toast('这两个框记住了，下次打开自动填', true); },
                function (e) { toast('没记下来：' + e, false); });
@@ -219,30 +215,6 @@ pub fn agent_js() -> &'static str {
       toast('没记下来：' + e, false);
     }
   }
-
-  // 自动锁定的活动心跳：账号页面是独立的原生 webview，用户在里面点/打字
-  // 不会冒泡到主窗口的 DOM，主窗口的空闲计时全靠这条信号才知道"这边其实还在用"。
-  // 节流到 5 秒一次——不是每次按键都值得一次 IPC。
-  var lastPing = 0;
-  function reportActivity() {
-    var now = Date.now();
-    if (now - lastPing < 5000) return;
-    lastPing = now;
-    try { window.__TAURI_INTERNALS__.invoke('touch_activity'); } catch (e) {}
-  }
-  // 只认**真人**输入：isTrusted 为假的是页面脚本自己 dispatch 的。也不用 scroll/focusin——
-  // 脚本滚动、el.focus() 触发的这两种照样是 trusted，自动滚动的日志页（Graylog 跟随模式）
-  // 会让账号库永远锁不上。清单跟 App.tsx 主窗口那边一致。
-  // 挂在 window 的捕获阶段，又比页面脚本先注册：页面自己 stopPropagation 也拦不住
-  function onInput(e) {
-    if (!e.isTrusted) return;
-    if (TOP) { reportActivity(); return; }
-    // 跨域 iframe 里的操作甩给主文档统一节流、统一走 IPC
-    try { window.top.postMessage({ __sb: 1, t: 'activity' }, '*'); } catch (err) {}
-  }
-  ['mousedown', 'keydown', 'wheel', 'touchstart'].forEach(function (t) {
-    window.addEventListener(t, onInput, { capture: true, passive: true });
-  });
 
   function remember(el) {
     if (!isField(el)) return;
@@ -270,7 +242,6 @@ pub fn agent_js() -> &'static str {
     var m = e.data;
     if (!m || m.__sb !== 1) return;
 
-    if (TOP && m.t === 'activity') { reportActivity(); return; }
     if (TOP && m.t === 'claimed') {
       var job = jobs[m.id];
       if (!job || !sameSite(e.origin)) return;
@@ -279,7 +250,7 @@ pub fn agent_js() -> &'static str {
       finish(m.id, e);                  // 自动填：先认领的那帧赢，晚到的忽略
       return;
     }
-    if (TOP && m.t === 'picked') { if (sameSite(e.origin)) report(m.u, m.p); return; }
+    if (TOP && m.t === 'picked') { if (pickNonce && m.nonce === pickNonce && sameSite(e.origin)) report(m.u, m.p); return; }
     if (TOP && m.t === 'find') { openFind(); return; }
 
     // 问话、发值、切指认只认主文档发来的：别的 iframe 冒充主文档塞一个 apply，
@@ -291,15 +262,17 @@ pub fn agent_js() -> &'static str {
         if (last && last.isConnected) els = [last];
       } else {
         var u = visible(m.u), p = visible(m.p);
-        if (u && p) els = [u, p];
+        if (automaticPair(u, p)) els = [u, p];
       }
       if (!els) return;
-      waiting = els;
+      waiting = { els: els, automatic: m.kind !== 'focused' };
       reply(e, { __sb: 1, t: 'claimed', id: m.id, at: lastAt });
     } else if (m.t === 'apply') {
-      var got = waiting;
+      var pending = waiting;
       waiting = null;
-      if (!got) return;
+      if (!pending) return;
+      var got = pending.els;
+      if (pending.automatic && !automaticPair(got[0], got[1])) return;
       for (var i = 0; i < got.length && i < m.values.length; i++) {
         got[i].focus();
         setVal(got[i], m.values[i], m.change);
@@ -309,7 +282,7 @@ pub fn agent_js() -> &'static str {
       else got[0].focus();
       toast('已填入' + m.what, true);
     } else if (m.t === 'pick') {
-      setPicking(m.on);
+      setPicking(m.on, m.nonce);
     }
   });
 
@@ -479,7 +452,7 @@ pub fn agent_js() -> &'static str {
     },
     // 按平台配置自动填充。页面是异步渲染的，而且用户可能还停在扫码 tab，所以轮询 30 秒
     autofill: function (uSel, pSel, uVal, pVal, change) {
-      var tries = 0, timer = 0;
+      var tries = 0, timer = 0, route = location.href;
       // 登录表单通常几秒内就渲染出来。以前 120 次 × 250ms = 30 秒，保活每 3 分钟
       // 刷新一次都要跑满；控制台登录态正常时全是空转。20 秒足够，也少一大截 DOM 遍历。
       function done() {
@@ -489,17 +462,19 @@ pub fn agent_js() -> &'static str {
         autoTimers = autoTimers.filter(function (x) { return x !== id; });
       }
       timer = setInterval(function () {
-        if (++tries > 40) { done(); return; }
+        if (++tries > 40 || location.href !== route) { done(); return; }
         ask({ kind: 'pair', u: uSel, p: pSel }, [uVal, pVal], '账号密码', change, done, null);
       }, 500);
       autoTimers.push(timer);
     },
-    pick: function (on) {
+    pick: function (on, nonce) {
       clearInterval(pickTimer);
-      broadcast({ __sb: 1, t: 'pick', on: !!on });
+      clearTimeout(pickExpiry);
+      if (on) pickExpiry = setTimeout(function () { window.__sb.pick(false); }, 60000);
+      broadcast({ __sb: 1, t: 'pick', on: !!on, nonce: nonce });
       // 登录页的 iframe 常常是点开指认之后才挂上来的（扫码/账密切 tab 就重挂一次），
       // 隔一秒补一次，新来的帧才知道现在在指认
-      if (on) pickTimer = setInterval(function () { broadcast({ __sb: 1, t: 'pick', on: true }); }, 1000);
+      if (on) pickTimer = setInterval(function () { broadcast({ __sb: 1, t: 'pick', on: true, nonce: nonce }); }, 1000);
     }
   };
 })();"#
@@ -524,8 +499,8 @@ pub fn fill_focused_js(value: &str, what: &str) -> String {
 
 /// 进入"手动指认输入框"模式：点第一个框标 1（账号），第二个标 2（密码），
 /// 两个都点完就把选择器回传给 App。对应 EmbeddedRefill.dc.html。
-pub fn picker_js() -> String {
-    "window.__sb && window.__sb.pick(true);".to_string()
+pub fn picker_js(nonce: &str) -> String {
+    format!("window.__sb && window.__sb.pick(true, {});", json_str(nonce))
 }
 
 pub fn stop_picker_js() -> &'static str {

@@ -330,6 +330,21 @@ pub fn export_backup(conn: &Connection, target: &Path) -> Result<(), String> {
     cleaned.and(detached)
 }
 
+/// 仅用于临时副本：完整性、schema 迁移和实际读取必须全部成功。
+pub fn validate_backup(conn: &Connection) -> Result<(), String> {
+    count_accounts(conn)?; // 不接受由 prepare 新造 accounts 的任意 SQLite 文件。
+    let cipher = conn.prepare("PRAGMA cipher_integrity_check").map_err(|e| e.to_string())?
+        .query_map([], |r| r.get::<_, String>(0)).map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    if !cipher.is_empty() { return Err("备份加密完整性检查失败".into()); }
+    let integrity: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+    if integrity != "ok" { return Err("备份数据库完整性检查失败".into()); }
+    prepare(conn)?;
+    list_accounts(conn)?;
+    list_platform_configs(conn)?;
+    Ok(())
+}
+
 /// 只数条数：验备份时用，老格式的库（没有 extra_fields 列）也数得了，而且不写库
 pub fn count_accounts(conn: &Connection) -> Result<usize, String> {
     conn.query_row("SELECT count(*) FROM accounts", [], |r| r.get::<_, i64>(0))

@@ -11,6 +11,9 @@ const rs = fs.readFileSync(path.join(__dirname, "../src-tauri/src/adapter.rs"), 
 const start = rs.indexOf("pub fn agent_js()");
 const AGENT = rs.slice(rs.indexOf("r#\"", start) + 3, rs.indexOf("\"#", start));
 
+const originPolicy = fs.readFileSync(path.join(__dirname, '../src-tauri/src/origin-policy.js'), 'utf8')
+  .replace('__SB_ORIGIN_GROUPS__', fs.readFileSync(path.join(__dirname, '../src-tauri/src/credential-origins.json'), 'utf8'));
+
 let current = null;
 const runIn = (f, fn) => { const p = current; current = f; try { return fn(); } finally { current = p; } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -58,13 +61,13 @@ function makeFrame(name, origin, parent) {
   f.topProxy = parent ? parent.topProxy : f.proxy;
   w.top = f.topProxy;
   if (parent) { parent.children.push(f); parent.window[parent.window.length] = f.proxy; parent.window.length++; }
-  runIn(f, () => vm.runInContext(AGENT, w));
+  runIn(f, () => { vm.runInContext(originPolicy, w); vm.runInContext(AGENT, w); });
   return f;
 }
 
 function field(f, id) {
   const el = {
-    id, tagName: "INPUT", _value: "", isConnected: true, isContentEditable: false, style: {}, shadowRoot: null,
+    id, type: id === "p" || id === "pw" ? "password" : "text", get value() { return this._value; }, getAttribute(k) { return this[k] || null; }, tagName: "INPUT", _value: "", isConnected: true, isContentEditable: false, style: {}, shadowRoot: null,
     getClientRects: () => [1],
     focus() { runIn(f, () => (f.docL.focusin || []).forEach((fn) => fn({ target: el, composedPath: () => [el] }))); },
     blur() {}, dispatchEvent: () => true,
@@ -119,7 +122,7 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
   {
     const top = makeFrame("top", "https://www.example.com", null);
     const search = field(top, "search");
-    const login = makeFrame("login", "https://login.example.com", top);
+    const login = makeFrame("login", "https://www.example.com", top);
     const pw = field(login, "pw");
     userClick(top, search);
     await sleep(20);
@@ -147,21 +150,16 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     await sleep(700);
     check("S5 null-origin iframe cannot claim", !stole(sb));
   }
-  // S6: heartbeat — trusted input from a child frame reaches IPC once (throttled); untrusted never
+  // S6: activity reported by any remote page/frame no longer reaches IPC.
   {
-    const top = makeFrame("top", "https://console.aliyun.com", null);
-    const child = makeFrame("child", "https://passport.aliyun.com", top);
-    runIn(child, () => (child.winL.keydown || []).forEach((fn) => fn({ isTrusted: false })));
+    const top = makeFrame('top', 'https://console.example.com', null);
+    const evil = makeFrame('evil', 'https://evil.test', top);
+    runIn(evil, () => top.window.postMessage({ __sb: 1, t: 'activity' }, '*'));
     await sleep(20);
-    const afterFake = top.invokes.filter((c) => c === "touch_activity").length;
-    runIn(child, () => (child.winL.keydown || []).forEach((fn) => fn({ isTrusted: true })));
-    runIn(child, () => (child.winL.wheel || []).forEach((fn) => fn({ isTrusted: true })));
-    await sleep(20);
-    const afterReal = top.invokes.filter((c) => c === "touch_activity").length;
-    const noScroll = !(child.winL.scroll || []).length && !(child.docL.scroll || []).length;
-    check("S6 script-dispatched events don't count as activity", afterFake === 0);
-    check("S6 real input pings once (throttled)", afterReal === 1);
-    check("S6 scroll is not a heartbeat source", noScroll);
+    runIn(top, () => (top.winL.keydown || []).forEach(fn => fn({ isTrusted: true, key: 'x' })));
+    check('S6 remote messages do not renew vault idle time', !top.invokes.includes('touch_activity'));
+    const acl = fs.readFileSync(path.join(__dirname, '../src-tauri/permissions/session-report.toml'), 'utf8');
+    check('S6 remote ACL does not expose touch_activity', !acl.split('commands.allow =')[1].includes('"touch_activity"'));
   }
   // S7: a sibling frame can't forge top's 'apply' into a waiting login field
   {
@@ -189,7 +187,7 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
   {
     const top = makeFrame("top", "https://www.example.com", null);
     const q = field(top, "q");
-    const login = makeFrame("login", "https://login.example.com", top);
+    const login = makeFrame("login", "https://www.example.com", top);
     const pw = field(login, "pw");
     userClick(login, pw);
     await sleep(20);
@@ -197,6 +195,35 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     runIn(top, () => top.window.__sb.fill("hello", "账号"));
     await sleep(400);
     check("S9 most recent wins even when it's the main document", q._value === "hello" && pw._value !== "hello");
+  }
+
+  // Tenant-controlled sibling origins cannot receive credentials, even on a shared suffix.
+  for (const [origin, hostileOrigin] of [
+    ['https://customer-a.github.io', 'https://customer-b.github.io'],
+    ['https://login.example.com', 'https://unreviewed.example.com'],
+    ['https://signin.aliyun.com', 'https://unreviewed.aliyun.com'],
+    ['https://signin.aliyun.com', 'https://passport.aliyun.com:8443'],
+  ]) {
+    const top = makeFrame('top', origin, null), evil = makeFrame('evil', hostileOrigin, top);
+    hostile(evil);
+    const u = field(top, 'u'), p = field(top, 'p');
+    runIn(top, () => top.window.__sb.autofill('#u', '#p', 'alice', 'dummy-password', true));
+    await sleep(700);
+    check('origin isolation: ' + hostileOrigin, !stole(evil) && p._value === 'dummy-password');
+  }
+  for (const scenario of ['new-password', 'section-new-password', 'nonempty', 'readonly', 'disabled']) {
+    const top = makeFrame('top', 'https://login.example.com', null);
+    const u = field(top, 'u'), p = field(top, 'p');
+    if (scenario === 'new-password') p.autocomplete = 'new-password';
+    if (scenario === 'section-new-password') p.autocomplete = 'section-profile new-password';
+    if (scenario === 'nonempty') p._value = 'user-typed';
+    if (scenario === 'readonly') p.readOnly = true;
+    if (scenario === 'disabled') p.disabled = true;
+    const before = p._value;
+    runIn(top, () => top.window.__sb.autofill('#u', '#p', 'alice', 'dummy-password', true));
+    await sleep(700);
+    check('automatic fill protects ' + scenario, p._value === before && u._value === '');
+    runIn(top, () => top.window.__sb.stopAutofill());
   }
 
   // P: 空白页探测（page_probe_js）。虚拟时钟，render(t) 给出第 t 毫秒时页面上有什么

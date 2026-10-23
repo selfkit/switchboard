@@ -1,8 +1,11 @@
 mod adapter;
+mod activity;
+mod origin_policy;
 mod bindings;
 mod context_menu;
 mod db;
 mod demo;
+mod downloads;
 mod logfile;
 mod models;
 mod power;
@@ -15,7 +18,7 @@ use region::{Endpoint, Origin, Verdict};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::sync::{atomic::{AtomicU64, Ordering}, Mutex};
+use std::sync::{atomic::{AtomicBool, AtomicU64, Ordering}, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State, Webview};
 
 /// None = 锁定态（还没输主密码 / 已锁回去）。
@@ -55,12 +58,8 @@ const AUTO_LOCK_SECS_KEY: &str = "auto_lock_secs";
 /// 哪些账号开了保活：`{账号 id: 网络异常时也保活}`，没开的不在里面。见 session.rs 的 `keep_alive`
 const KEEP_ALIVE_KEY: &str = "keep_alive_accounts";
 
-/// "最近一次操作"的时间戳，主窗口和账号页面共用一份。
-///
-/// 只在前端记这个时间戳不够：账号页面（会话页右侧）是独立的原生子 webview，
-/// 用户在里面填外部登录表单时，那些点击/按键根本不会冒泡到主窗口的 DOM，
-/// 主窗口的 JS 完全看不见——所以需要这一份后端共享状态，让 `adapter.rs` 里
-/// 注入进账号页面的常驻脚本也能把"刚刚有人在动"报回来。
+/// 原生输入与本地主窗口共用的活动时钟；远端页面不能续期。
+/// 子 WebView 的 DOM 事件不会冒泡到主窗口，活动检测由 activity.rs 的原生事件实现。
 #[derive(Default)]
 struct Activity(Mutex<ActivityClock>);
 
@@ -171,12 +170,16 @@ fn custom_download_dir(app: &AppHandle) -> Option<PathBuf> {
 }
 
 /// 下载完要不要弹保存框。演示模式永远不问：保存框里会露出真实的文件夹
+static DOWNLOAD_ASK_CACHE: AtomicBool = AtomicBool::new(false);
 pub fn download_ask(app: &AppHandle) -> bool {
     if demo::on() {
         return false;
     }
     let Some(vault) = app.try_state::<Vault>() else { return false };
-    with_conn(&vault, |c| db::get_meta(c, DOWNLOAD_ASK_KEY)).is_ok_and(|v| v == "1")
+    if let Ok(value) = with_conn(&vault, |c| db::get_meta(c, DOWNLOAD_ASK_KEY)) {
+        DOWNLOAD_ASK_CACHE.store(value == "1", Ordering::Relaxed);
+    }
+    DOWNLOAD_ASK_CACHE.load(Ordering::Relaxed)
 }
 
 /// 这次运行里本 App 下载 / 另存过的文件。「在访达中显示」「另存到…」只认这些路径：
@@ -253,6 +256,7 @@ fn register(app: AppHandle, vault: State<Vault>, username: String, password: Str
     // 跟界面读到的自动锁定时长对齐（新库没设过 = 默认 30 分钟），不然"超时后点一下不续命"那道判断在注册后一直不生效
     let limit = auto_lock_secs_of(&conn);
     *vault.0.lock().map_err(|e| e.to_string())? = Some(conn);
+    session::set_unlocked(&app, true);
     if let Ok(mut c) = app.state::<Activity>().0.lock() {
         c.reset(limit);
     }
@@ -295,6 +299,7 @@ async fn unlock(app: AppHandle, vault: State<'_, Vault>, password: String, force
     }
     let limit = auto_lock_secs_of(&conn);
     *vault.0.lock().map_err(|e| e.to_string())? = Some(conn);
+    session::set_unlocked(&app, true);
     if let Ok(mut c) = app.state::<Activity>().0.lock() {
         c.reset(limit);
     }
@@ -325,6 +330,8 @@ fn current_owner(app: AppHandle) -> String {
 /// 保活的意思就是 App 开着就一直在线，锁一下就掉等于没开。这是用户按账号勾的，代价是这几个账号的
 /// 登录数据在锁定期间留在磁盘上。库照样锁上，密钥照样放掉。清空账号库、导入备份、演示模式传 false
 fn lock_down(app: &AppHandle, vault: &State<Vault>, keep_alive: bool) -> Result<(), String> {
+    let _ = download_ask(app); // 锁着完成的下载仍记住“每次询问”，解锁后串行处理。
+    session::set_unlocked(app, false);
     bindings::cancel_all(app);
     snapshot_cookies(app, None);
     let kept = if keep_alive { session::keep_alive_ids(app) } else { Vec::new() };
@@ -478,6 +485,7 @@ fn enter_demo(app: AppHandle, vault: State<Vault>) -> Result<(), String> {
     match built {
         Ok(conn) => {
             *guard = Some(conn);
+            session::set_unlocked(&app, true);
             if let Ok(mut c) = app.state::<Activity>().0.lock() {
                 c.reset(0);
             }
@@ -490,18 +498,17 @@ fn enter_demo(app: AppHandle, vault: State<Vault>) -> Result<(), String> {
     }
 }
 
-/// 标一次"刚刚有人在动"。账号页面的 agent_js 和主窗口自己都会调；
-/// 不读不写任何账号数据，所以账号页面（外部登录页）里也能安全地开放这条命令。
-///
-/// **已经超时的不续命**，返回 true 让调用方去锁。否则人离开半小时、回来随手一点，
-/// 赶在前端下一轮检查之前把时钟刷新了，自动锁定就被一次点击绕过去了。
-///
-/// 是从哪个账号页面报上来的，就顺手给那个账号的保活重新计时（主窗口报的对不上任何页签，什么也不做）。
-/// 账号认的是调用方自己的 webview，页面没法替别的账号报
+/// 只由本地主窗口调用；远端会话无此 ACL 权限。
 #[tauri::command]
-fn touch_activity(app: AppHandle, webview: Webview, activity: State<Activity>) -> bool {
-    session::mark_input(&app, webview.label());
+fn touch_activity(activity: State<Activity>) -> bool {
     activity.0.lock().map(|mut c| c.touch()).unwrap_or(false)
+}
+
+/// AppKit 本地事件回调不能等待可能正等主线程的后台命令持有的锁。
+fn native_activity(app: &AppHandle) {
+    if let Ok(mut clock) = app.state::<Activity>().0.try_lock() {
+        if !clock.touch() { session::mark_native_input(app); }
+    }
 }
 
 /// 距离上一次有效操作过了多少秒，前端拿它跟设置的时长比。
@@ -1022,15 +1029,15 @@ fn delete_account(app: AppHandle, vault: State<Vault>, id: String) -> Result<(),
 /// 所以「其他」按站点单独存成 `其他 · host[:port]`，取的时候先找站点那条，没有再退回「其他」。
 const OTHER_PLATFORM: &str = "其他";
 
-fn config_key(a: &Account) -> String {
-    if a.platform != OTHER_PLATFORM {
-        return a.platform.clone();
-    }
-    let Ok(u) = a.login_url.trim().parse::<tauri::Url>() else { return a.platform.clone() };
+fn config_key(a: &Account) -> String { config_key_parts(&a.platform, &a.login_url) }
+
+fn config_key_parts(platform: &str, login_url: &str) -> String {
+    if platform != OTHER_PLATFORM { return platform.to_string(); }
+    let Ok(u) = login_url.trim().parse::<tauri::Url>() else { return platform.to_string() };
     match (u.host_str(), u.port()) {
         (Some(h), Some(p)) => format!("{OTHER_PLATFORM} · {h}:{p}"),
         (Some(h), None) => format!("{OTHER_PLATFORM} · {h}"),
-        _ => a.platform.clone(),
+        _ => platform.to_string(),
     }
 }
 
@@ -1057,8 +1064,11 @@ pub fn autofill_for(app: &AppHandle, account_id: &str) -> Option<(tauri::Url, St
     })
     .ok()?;
     let cfg = cfg.filter(|c| c.trigger_event != "skip" && !c.username_selector.is_empty() && !c.password_selector.is_empty())?;
-    let login = a.login_url.trim().parse().ok()?;
-    Some((login, adapter::fill_js(&cfg, &a.username, &a.credential)))
+    let login: tauri::Url = a.login_url.trim().parse().ok()?;
+    let path = serde_json::to_string(login.path()).ok()?;
+    let fill = adapter::fill_js(&cfg, &a.username, &a.credential);
+    let js = origin_policy::guard(&login, &format!("if (location.pathname === {path}) {{ {fill} }}"));
+    Some((login, js))
 }
 
 // ----------------------------------------------------------- 输入框与字段绑定
@@ -1465,6 +1475,13 @@ fn set_download_settings(vault: State<Vault>, dir: Option<String>, ask: bool) ->
 /// 在那儿弹模态框等于在浏览器内核的回调里跑一个嵌套消息循环，两边都不稳。先下后挪，两个平台是同一条路。
 /// 保存框自己会问"要不要替换同名文件"，所以这里直接覆盖
 #[tauri::command]
+fn pending_downloads(vault: State<Vault>) -> Result<Vec<downloads::Done>, String> {
+    with_conn(&vault, |_| Ok(downloads::pending()))
+}
+#[tauri::command]
+fn acknowledge_download(id: u64) { downloads::acknowledge(id); }
+
+#[tauri::command]
 fn move_download(from: String, to: String) -> Result<String, String> {
     let (from, to) = (PathBuf::from(from), PathBuf::from(to));
     if !is_our_download(&from) || !from.is_file() {
@@ -1709,11 +1726,19 @@ fn report_picked_selectors(
     vault: State<Vault>,
     username_selector: String,
     password_selector: String,
+    nonce: String,
 ) -> Result<(), String> {
-    let account_id = session::picking_account(&app, webview.label()).ok_or("当前窗口不在指认模式")?;
-    let account = with_conn(&vault, |c| db::get_account(c, &account_id))?;
+    if [&username_selector, &password_selector].iter().any(|s| s.trim().is_empty() || s.len() > 4096) {
+        return Err("选择器为空或过长，请重新指认".into());
+    }
+    let page = session::native_url(&webview)?;
+    let account_id = session::take_pick(&app, webview.label(), &nonce, &page)?;
+    let key = with_conn(&vault, |c| {
+        let (platform, login): (String, String) = c.query_row("SELECT platform, login_url FROM accounts WHERE id=?1", [&account_id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(|e| e.to_string())?;
+        Ok(config_key_parts(&platform, &login))
+    })?;
     let cfg = PlatformConfig {
-        platform: config_key(&account),
+        platform: key,
         username_selector,
         password_selector,
         trigger_event: "input+change".into(),
@@ -1722,12 +1747,6 @@ fn report_picked_selectors(
     };
     with_conn(&vault, |c| db::save_platform_config(c, &cfg))?;
     session::set_picking(&app, &account_id, false)?;
-    // 配置刚写好，立刻按新选择器填一次，省得用户再点一遍"一键登录"
-    let _ = session::eval_active(
-        &app,
-        &account_id,
-        &adapter::fill_js(&cfg, &account.username, &account.credential),
-    );
     app.emit_to(tauri::EventTarget::labeled("main"), "selectors-picked", cfg.platform)
         .map_err(|e| e.to_string())
 }
@@ -1828,11 +1847,8 @@ fn import_backup(
         return Err("本机还没有账号库".into());
     }
     drop(db::open_for_unlock(&dst, &current).map_err(|_| "当前主密码不正确".to_string())?);
-    // 只读着验：db::open 会顺手建表、写默认配置，等于改了用户选的那份备份文件
-    let (count, owner) = {
-        let probe = db::open_for_unlock(&src, &password)?;
-        (db::count_accounts(&probe)?, db::get_meta(&probe, "username").ok())
-    };
+    // 在副本上验证并迁移，成功前不锁定、不替换当前库，也不改原备份。
+    let (staged, count, owner) = stage_backup(&src, &password, dst.parent().ok_or("账号库目录无效")?)?;
 
     lock_down(&app, &vault, false)?; // 先放开当前库的句柄再覆盖
 
@@ -1845,13 +1861,32 @@ fn import_backup(
         }
         replaced = dst.with_extension(format!("db.replaced-{stamp}-{n}"));
     }
-    swap_in_backup(&src, &dst, &replaced)?;
+    swap_in_backup(&staged.0, &dst, &replaced)?;
     prune_archives(&data_dir(&app)?, "replaced");
     // 备份可能是另一个人的库，登录页显示的身份要跟着换——等真换成功了再改
     if let Some(name) = owner {
         write_owner(&app, &name);
     }
     Ok(count)
+}
+
+/// 无论验证/复制/替换在哪一步失败，临时加密库都应被清理。
+struct StagedBackup(PathBuf);
+impl Drop for StagedBackup {
+    fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); }
+}
+fn stage_backup(src: &Path, password: &str, directory: &Path) -> Result<(StagedBackup, usize, Option<String>), String> {
+    let staged = StagedBackup(directory.join(format!(".import-{}.db", uuid::Uuid::new_v4())));
+    std::fs::copy(src, &staged.0).map_err(|e| format!("无法准备备份副本：{e}"))?;
+    let conn = db::open_for_unlock(&staged.0, password)?;
+    db::validate_backup(&conn)?;
+    let accounts = db::list_accounts(&conn)?;
+    for a in &accounts { bindings::list(&conn, &a.id)?; }
+    let orphan: i64 = conn.query_row("SELECT count(*) FROM field_bindings WHERE account_id NOT IN (SELECT id FROM accounts)", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+    if orphan != 0 { return Err("备份包含无归属的字段绑定".into()); }
+    let owner = db::get_meta(&conn, "username").ok();
+    drop(conn);
+    Ok((staged, accounts.len(), owner))
 }
 
 /// 旧库归档每种只留最近这么多份
@@ -1919,6 +1954,16 @@ pub fn run() {
         .manage(Activity::default())
         .setup(|app| {
             context_menu::install();
+            activity::install(app.handle());
+            let menu = tauri::menu::Menu::default(app.handle())?;
+            let quick = tauri::menu::MenuItem::with_id(app, "quick-switch", "切换账号", true, Some("CmdOrCtrl+K"))?;
+            menu.append(&tauri::menu::Submenu::with_items(app, "会话", true, &[&quick])?)?;
+            app.set_menu(menu)?;
+            app.on_menu_event(|app, event| {
+                if event.id().as_ref() == "quick-switch" {
+                    let _ = app.emit_to(tauri::EventTarget::labeled("main"), "quick-switch", ());
+                }
+            });
             let handle = app.handle().clone();
             if let Ok(dir) = data_dir(&handle) {
                 logfile::init(&dir);
@@ -2027,6 +2072,8 @@ pub fn run() {
             get_download_settings,
             set_download_settings,
             move_download,
+            pending_downloads,
+            acknowledge_download,
             write_clipboard,
             clear_clipboard_later,
             enter_demo,
@@ -2096,6 +2143,41 @@ mod tests {
         assert!(is_our_download(&to), "挪过去的新路径要能在访达里显示");
         assert!(move_download(s(&ours), s(&to)).is_err(), "原文件已经挪走了");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn backup_is_fully_validated_before_replacing_anything() {
+        let dir = std::env::temp_dir().join(format!("sb-import-check-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("broken.db");
+        let conn = crate::db::open_for_unlock(&source, "backup-password").unwrap();
+        conn.execute_batch("CREATE TABLE accounts (id TEXT PRIMARY KEY); INSERT INTO accounts VALUES ('sample')").unwrap();
+        assert_eq!(crate::db::count_accounts(&conn).unwrap(), 1);
+        drop(conn);
+        let before = std::fs::read(&source).unwrap();
+        assert!(super::stage_backup(&source, "backup-password", &dir).is_err());
+        assert_eq!(std::fs::read(&source).unwrap(), before, "验证不能迁移原备份");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "失败不留临时库");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn staged_backup_migrates_legacy_schema_and_preserves_the_original() {
+        let dir = std::env::temp_dir().join(format!("sb-import-old-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("legacy.db");
+        let conn = crate::db::open_for_unlock(&source, "backup-password").unwrap();
+        conn.execute_batch("CREATE TABLE accounts (id TEXT PRIMARY KEY, platform TEXT NOT NULL, owner_type TEXT NOT NULL, related_app TEXT NOT NULL, account_role TEXT NOT NULL, login_url TEXT NOT NULL, username TEXT NOT NULL, credential TEXT NOT NULL, totp_secret TEXT NOT NULL, backup_contact TEXT NOT NULL, remark TEXT NOT NULL); INSERT INTO accounts VALUES ('one', 'Other', '', '', '', 'https://example.com', 'user', 'dummy', '', '', '');").unwrap();
+        drop(conn);
+        let before = std::fs::read(&source).unwrap();
+        let (staged, count, _) = super::stage_backup(&source, "backup-password", &dir).unwrap();
+        assert_eq!(count, 1);
+        let conn = crate::db::open_for_unlock(&staged.0, "backup-password").unwrap();
+        assert_eq!(crate::db::list_accounts(&conn).unwrap()[0].credential, "dummy");
+        assert_eq!(std::fs::read(&source).unwrap(), before);
+        drop(conn); drop(staged);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// Windows 专用的两个字符串处理，在哪个平台都能测

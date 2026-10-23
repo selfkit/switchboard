@@ -14,7 +14,7 @@ use crate::adapter;
 use crate::models::{Account, SessionInfo, TabInfo};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use tauri::webview::cookie::Cookie;
@@ -80,7 +80,7 @@ pub struct Tab {
     /// 当前是不是显示着。只在状态变化时才调 show/hide，避免每次轮询都闪
     pub shown: bool,
     /// 是否正处在"手动指认输入框"模式，只有这时才接受页面回传的选择器
-    pub picking: bool,
+    pub picking: Arc<Mutex<Option<PickPermit>>>,
     /// 这个页签是不是一个**独立窗口**（`window.open` 带尺寸的真弹窗，见 docs/BROWSER-COMPAT.md）。
     /// 独立窗口不参与主窗口那块区域的摆放和显示隐藏，但**照样登记在这里**——
     /// 区域拦截靠这张表逐个切断，漏登记就等于开了个切不断的窗口。
@@ -95,6 +95,15 @@ pub struct Tab {
     pub manual_url: Option<String>,
     /// manual_url 是没写协议头、由我们补的（失败时提示"可能协议猜错了"）
     pub manual_scheme_implied: bool,
+}
+
+/// 导航即销毁；只允许上报原文档的选择器，有效期一分钟。
+pub struct PickPermit { nonce: String, origin: String, started: Instant }
+impl PickPermit {
+    fn accepts(&self, nonce: &str, page: &tauri::Url) -> bool {
+        self.nonce == nonce && self.origin == page.origin().ascii_serialization()
+            && self.started.elapsed() < Duration::from_secs(60)
+    }
 }
 
 impl Tab {
@@ -286,12 +295,62 @@ impl SessionState {
 
 #[derive(Default)]
 pub struct Sessions {
+    /// 偶数为锁定，奇数为解锁；每次切换都使未完成的创建请求失效。
+    epoch: AtomicU64,
+    pending: Mutex<HashMap<String, usize>>,
     pub map: Mutex<HashMap<String, SessionState>>,
     /// App 当前是不是停在「会话」页；不是的话所有账号页面都藏起来
     pub visible: Mutex<bool>,
     /// 当前显示的是哪个账号（存 account_id）。
     /// 以前存的是 webview 的 label，一个账号多页签之后 label 不再唯一标识账号了。
     pub active: Mutex<String>,
+}
+
+pub fn set_unlocked(app: &AppHandle, unlocked: bool) {
+    let sessions = app.state::<Sessions>();
+    let _ = sessions.epoch.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |old| {
+        ((old % 2 == 1) != unlocked).then_some(old + 1)
+    });
+    if !unlocked {
+        if let Ok(mut visible) = sessions.visible.lock() { *visible = false; }
+        if let Ok(map) = sessions.map.lock() {
+            for t in map.values().flat_map(|s| &s.tabs) {
+                if let Ok(mut p) = t.picking.lock() { *p = None; }
+            }
+        }
+        refresh_layout(app);
+    }
+}
+
+struct Opening { app: AppHandle, account: String, seq: u32, epoch: u64, session_started: Instant }
+impl Opening {
+    fn valid(&self, session: &SessionState) -> bool {
+        self.app.state::<Sessions>().epoch.load(Ordering::SeqCst) == self.epoch
+            && session.opened_at == self.session_started
+    }
+}
+impl Drop for Opening {
+    fn drop(&mut self) {
+        if let Ok(mut pending) = self.app.state::<Sessions>().pending.lock() {
+            if let Some(n) = pending.get_mut(&self.account) { *n = n.saturating_sub(1); }
+        }
+    }
+}
+fn reserve_window(app: &AppHandle, account: &str, url: &tauri::Url) -> Result<Opening, String> {
+    let sessions = app.state::<Sessions>();
+    let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
+    let epoch = sessions.epoch.load(Ordering::SeqCst);
+    if epoch % 2 == 0 { return Err("账号库已锁定，不能打开新页面".into()); }
+    if !matches!(url.scheme(), "http" | "https") { return Err("只支持 HTTP/HTTPS 页面".into()); }
+    let s = map.get_mut(account).ok_or("这个账号的页面没开着")?;
+    if s.tabs.iter().any(|t| t.cut) { return Err(CUT_MSG.into()); }
+    let mut pending = sessions.pending.lock().map_err(|e| e.to_string())?;
+    let n = pending.entry(account.to_owned()).or_default();
+    if s.tabs.len() + *n >= MAX_TABS { return Err(format!("这个账号已经开了 {MAX_TABS} 个页签/弹窗")); }
+    let seq = s.next_seq;
+    s.next_seq += 1;
+    *n += 1;
+    Ok(Opening { app: app.clone(), account: account.into(), seq, epoch, session_started: s.opened_at })
 }
 
 pub fn label_for(account_id: &str) -> String {
@@ -396,8 +455,8 @@ fn apply_layout(app: &AppHandle, reposition: bool) {
             // 加载失败/被切断的页面要藏起来，否则它那块白板盖住前端画的提示。
             // 原生 webview 永远盖在主窗口网页之上，HTML 弹层压不住它。
             // 非当前页签的也一律藏起来——它们是同一块地方上的好几层。
-            let want = visible && is_active_account && i == active_tab && !t.failed() && !t.cut;
-            if want != t.shown {
+            let want = sessions.epoch.load(Ordering::SeqCst) % 2 == 1 && visible && is_active_account && i == active_tab && !t.failed() && !t.cut;
+            if want != t.shown || sessions.epoch.load(Ordering::SeqCst) % 2 == 0 {
                 let _ = if want { v.show() } else { v.hide() };
                 t.shown = want;
             }
@@ -407,6 +466,7 @@ fn apply_layout(app: &AppHandle, reposition: bool) {
 
 /// App 切到 / 切离「会话」页时调用。
 pub fn set_visible(app: &AppHandle, visible: bool) -> Result<(), String> {
+    let visible = visible && app.state::<Sessions>().epoch.load(Ordering::SeqCst) % 2 == 1;
     *app.state::<Sessions>().visible.lock().map_err(|e| e.to_string())? = visible;
     refresh_layout(app);
     Ok(())
@@ -556,12 +616,12 @@ fn download_path(app: &AppHandle, suggested: &str, url: &tauri::Url) -> Option<P
         _ => (name.clone(), String::new()),
     };
     let mut n = 2;
-    while path.exists() && n < 100 {
+    while (path.exists() || crate::is_our_download(&path)) && n < 100 {
         path = dir.join(format!("{stem}-{n}{ext}"));
         n += 1;
     }
     // 编号用完了还重名就不指定落点，交给 WebKit 自己起名——总比悄悄盖掉 -99 那个强
-    if path.exists() {
+    if path.exists() || crate::is_our_download(&path) {
         return None;
     }
     Some(path)
@@ -608,52 +668,37 @@ fn clean_name(raw: &str, windows: bool) -> String {
     name
 }
 
-/// 页签和弹窗共用的下载处理。
-///
-/// macOS 的 `Finished` 事件**不带路径**（API 限制），所以在 `Requested` 时把我们选的
-/// 路径记在 `last` 里，完成时报给前端——否则用户只知道"下完了"，不知道文件去哪了。
-fn handle_download(
-    app: &AppHandle,
-    label: &str,
-    last: &Arc<Mutex<PathBuf>>,
-    event: tauri::webview::DownloadEvent<'_>,
-) -> bool {
+/// 按 URL 关联每次下载；无原生标识的同 URL 并发请求明确拒绝。
+fn handle_download(app: &AppHandle, label: &str, tracker: &Arc<Mutex<crate::downloads::Tracker>>, event: tauri::webview::DownloadEvent<'_>) -> bool {
     match event {
         tauri::webview::DownloadEvent::Requested { url, destination } => {
-            // wry 递进来的 destination 已经是「下载目录 + WebKit 建议名」，只取它的文件名
-            let suggested = destination
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if let Some(p) = download_path(app, &suggested, &url) {
-                if let Ok(mut l) = last.lock() {
-                    *l = p.clone();
-                }
-                crate::remember_download(&p);
-                *destination = p;
+            let Ok(mut downloads) = tracker.lock() else { return false };
+            if downloads.contains(url.as_str()) {
+                let _ = app.emit_to(tauri::EventTarget::labeled(MAIN_LABEL), "tab-open-failed", "相同地址的文件正在下载，请等它完成后再试");
+                return false;
             }
+            let suggested = destination.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let Some(path) = download_path(app, &suggested, &url) else { return false };
+            crate::remember_download(&path);
+            downloads.begin(url.to_string(), path.clone());
+            *destination = path;
+            drop(downloads);
             download_started(app, label);
         }
-        tauri::webview::DownloadEvent::Finished { success, .. } => {
-            let path = last.lock().map(|p| p.clone()).unwrap_or_default();
-            let _ = app.emit_to(
-                tauri::EventTarget::labeled(MAIN_LABEL),
-                "download-finished",
-                DownloadDone {
-                    name: path
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default(),
-                    path: path.display().to_string(),
-                    success,
-                    ask: crate::download_ask(app),
-                },
-            );
-            download_finished(app, label);
+        tauri::webview::DownloadEvent::Finished { url, path, success } => {
+            let (path, empty) = {
+                let Ok(mut downloads) = tracker.lock() else { return true };
+                (downloads.finish(url.as_str(), path), downloads.is_empty())
+            };
+            if let Some(path) = path {
+                crate::remember_download(&path);
+                crate::downloads::complete(app, path, success);
+                if empty { download_finished(app, label); }
+            }
         }
         _ => (),
     }
-    true // 让下载继续
+    true
 }
 
 fn download_started(app: &AppHandle, label: &str) {
@@ -689,59 +734,10 @@ fn download_finished(app: &AppHandle, label: &str) {
     });
 }
 
-/// 下载完成的通知，发给主窗口前端。
-#[derive(Clone, serde::Serialize)]
-struct DownloadDone {
-    name: String,
-    path: String,
-    success: bool,
-    /// 设置里开了「每次都问」：前端弹保存框，选好后调 move_download 挪过去
-    ask: bool,
-}
-
-/// 近似"同一个站"（可注册域名）：取主机名最后两段；倒数第二段是 com/net/org/gov/edu/co/ac
-/// 且顶级域是两个字母的国家码时（com.cn、co.uk）取最后三段。跟 adapter.rs 里 JS 的 `site()` 同一套规则。
-/// ponytail: 没带公共后缀表，github.io 这类多租户后缀会被当成同一个站；真有登录页落在那种域名上再换 publicsuffix
-fn site_of(host: &str) -> String {
-    let host = host.trim_end_matches('.').to_ascii_lowercase();
-    let parts: Vec<&str> = host.split('.').collect();
-    let n = parts.len();
-    let take = if n > 2
-        && parts[n - 1].len() == 2
-        && matches!(parts[n - 2], "com" | "net" | "org" | "gov" | "edu" | "co" | "ac")
-    {
-        3
-    } else {
-        2
-    };
-    parts[n.saturating_sub(take)..].join(".")
-}
-
-/// 手动填密码的站点校验：同一个域名（按 `site_of` 算，子域名算一个）或同一个 IP 就放行，协议和端口不管。
-/// 比 `fill_allowed` 松：这是用户自己点的，同一台机器上换了个端口的服务（宝塔面板和它上面的站）也该能填
-fn same_host(login: &tauri::Url, page: &tauri::Url) -> bool {
-    match (login.domain(), page.domain()) {
-        (Some(a), Some(b)) if a.contains('.') => site_of(a) == site_of(b),
-        _ => login.host_str().is_some() && login.host_str() == page.host_str(),
-    }
-}
-
-/// 自动填充只在跟登录直达 URL **同一个站**的页面上跑。
-///
-/// 填充脚本里是明文密码，而同一个页签是会跳走的（控制台里点了个站外链接、SSO 跳转）。
-/// 不挡的话每换一页都 eval 一遍：别的站只要有个 `input[type=password]` 就会被填上，
-/// 页面自己把 `window.__sb` 换成自己的函数更是直接拿到密码。
-/// 同站而不是同源：`account.aliyun.com` 跳 `signin.aliyun.com` 这种正常流程得留着；
-/// 协议也要一致，https 登录页的密码不往 http 页里填。
-/// IP 和单段主机名（自建的宝塔/Graylog）没有"站"的概念，要求协议+主机+端口完全一致。
+/// 凭据默认同源，仅放行逐个审核的已知 SSO 来源。
+fn same_host(login: &tauri::Url, page: &tauri::Url) -> bool { fill_allowed(login, page) }
 pub(crate) fn fill_allowed(login: &tauri::Url, page: &tauri::Url) -> bool {
-    if login.scheme() != page.scheme() {
-        return false;
-    }
-    match (login.domain(), page.domain()) {
-        (Some(a), Some(b)) if a.contains('.') => site_of(a) == site_of(b),
-        _ => login.origin() == page.origin(),
-    }
+    crate::origin_policy::allows(login, page)
 }
 
 /// 建一个页签的 webview 并挂到主窗口上。
@@ -773,6 +769,8 @@ fn build_tab(
     let committed_cb = committed.clone();
     let last_url = Arc::new(Mutex::new(target.to_string()));
     let last_url_cb = last_url.clone();
+    let picking = Arc::new(Mutex::new(None));
+    let picking_cb = picking.clone();
     let title = Arc::new(Mutex::new(String::new()));
     let title_cb = title.clone();
     let fill_id = account_id.to_string();
@@ -785,7 +783,7 @@ fn build_tab(
     let popup_app = app.clone();
     let popup_id = account_id.to_string();
     let dl_app = app.clone();
-    let dl_last = Arc::new(Mutex::new(PathBuf::new()));
+    let dl_last = Arc::new(Mutex::new(crate::downloads::Tracker::default()));
 
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(blank))
         .data_directory(profile_dir(app, account_id)?)
@@ -802,6 +800,7 @@ fn build_tab(
         // 常驻：填充 / 指认 / 记住最后点过的输入框，全靠它。
         // 必须**每个 frame 都注入**——阿里云腾讯云这类站的登录框在跨域 iframe 里，
         // 只注主文档的话点击记不到、指认点不中、自动填充也找不到框
+        .initialization_script_for_all_frames(&crate::origin_policy::script())
         .initialization_script_for_all_frames(adapter::agent_js())
         .initialization_script_for_all_frames(crate::bindings::AGENT)
         // Tauri 默认给每个 webview 装自己的拖放接收器，OS 的拖放事件被它接走，
@@ -846,6 +845,7 @@ fn build_tab(
                 return;
             }
             if payload.event() != tauri::webview::PageLoadEvent::Finished {
+                if let Ok(mut p) = picking_cb.lock() { *p = None; }
                 loaded_cb.store(false, Ordering::Relaxed);
                 committed_cb.store(true, Ordering::Relaxed);
                 crate::bindings::navigation(webview.app_handle(), webview.label());
@@ -870,10 +870,16 @@ fn build_tab(
             }
         });
 
-    let view = win.add_child(builder, pos, size).map_err(|e| e.to_string())?;
-    restore_cookies(&view, cookies);
-    crate::bindings::arm(app, &label);
-    view.navigate(target).map_err(|e| e.to_string())?;
+    let view = win.add_child(builder, LogicalPosition::new(-10000.0, -10000.0), LogicalSize::new(1.0, 1.0)).map_err(|e| e.to_string())?;
+    let initialized = (|| {
+        view.hide().map_err(|e| e.to_string())?;
+        view.set_position(pos).map_err(|e| e.to_string())?;
+        view.set_size(size).map_err(|e| e.to_string())?;
+        restore_cookies(&view, cookies);
+        crate::bindings::arm(app, &label);
+        view.navigate(target).map_err(|e| e.to_string())
+    })();
+    if let Err(e) = initialized { let _ = view.close(); return Err(e); }
 
     Ok(Tab {
         label,
@@ -886,7 +892,7 @@ fn build_tab(
         fill_armed,
         cut: false,
         shown: false,
-        picking: false,
+        picking,
         external: false,
         seen_page,
         download_only: false,
@@ -928,17 +934,8 @@ fn open_popup_window(
     url: &tauri::Url,
     features: tauri::webview::NewWindowFeatures,
 ) -> Result<tauri::WebviewWindow, String> {
-    let seq = {
-        let sessions = app.state::<Sessions>();
-        let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
-        let s = map.get_mut(account_id).ok_or("这个账号的页面没开着")?;
-        if s.tabs.len() >= MAX_TABS {
-            return Err(format!("这个账号已经开了 {MAX_TABS} 个页签/弹窗"));
-        }
-        let seq = s.next_seq;
-        s.next_seq += 1;
-        seq
-    };
+    let opening = reserve_window(app, account_id, url)?;
+    let seq = opening.seq;
     let label = popup_label(account_id, seq);
     let title = Arc::new(Mutex::new(String::new()));
     let title_cb = title.clone();
@@ -950,7 +947,9 @@ fn open_popup_window(
         &label,
         WebviewUrl::External("about:blank".parse().map_err(|_| "about:blank 解析失败")?),
     )
-    .window_features(features);
+    .window_features(features)
+    .visible(false)
+    .focused(false);
     #[cfg(windows)]
     let window = window.scroll_bar_style(tauri::webview::ScrollBarStyle::FluentOverlay);
     let window = window
@@ -960,7 +959,7 @@ fn open_popup_window(
         // 弹窗里也可能点下载（有些平台把证书/模板放在弹出的说明页里）
         .on_download({
             let (dl_app, dl_label) = (app.clone(), label.clone());
-            let dl_last = Arc::new(Mutex::new(PathBuf::new()));
+            let dl_last = Arc::new(Mutex::new(crate::downloads::Tracker::default()));
             move |_, event| handle_download(&dl_app, &dl_label, &dl_last, event)
         })
         // 只用来认"这个弹窗有没有显示过页面"：window.open 直接开一个下载地址的弹窗，下载完要关掉
@@ -1002,7 +1001,11 @@ fn open_popup_window(
     {
         let sessions = app.state::<Sessions>();
         let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
-        let s = map.get_mut(account_id).ok_or("这个账号的页面没开着")?;
+        let Some(s) = map.get_mut(account_id).filter(|s| opening.valid(s) && !s.tabs.iter().any(|t| t.cut)) else {
+            drop(map);
+            let _ = window.close();
+            return Err("页面已锁定、关闭或被切断".into());
+        };
         s.tabs.push(Tab {
             label,
             nav_at: Instant::now(),
@@ -1016,7 +1019,7 @@ fn open_popup_window(
             fill_armed: Arc::new(Mutex::new(Instant::now())),
             cut: false,
             shown: true,
-            picking: false,
+            picking: Arc::new(Mutex::new(None)),
             external: true,
             seen_page,
             download_only: false,
@@ -1024,6 +1027,8 @@ fn open_popup_window(
             manual_url: None,
             manual_scheme_implied: false,
         });
+        // 与 close_all 共用 map 锁，锁定收尾必定在这次显示之后关闭窗口。
+        window.show().map_err(|e| e.to_string())?;
     }
     Ok(window)
 }
@@ -1064,30 +1069,22 @@ fn open_tab_with(
     url: tauri::Url,
     manual: Option<(String, bool)>,
 ) -> Result<(), String> {
-    let seq = {
+    let opening = reserve_window(app, account_id, &url)?;
+    let mut tab = build_tab(app, account_id, opening.seq, url, false, &[], manual)?;
+    let label = tab.label.clone();
+    let inserted = {
         let sessions = app.state::<Sessions>();
         let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
-        let s = map.get_mut(account_id).ok_or("这个账号的页面没开着")?;
-        // 页签是页面自己 window.open 出来的，数量不由用户控制：写坏的站能一口气开几十个，
-        // 每个都是一个真 webview。给个上限，超了就不再开。
-        // ponytail: 硬上限够用，真要更细的策略（比如提示用户"这页在疯狂开窗"）再说
-        if s.tabs.len() >= MAX_TABS {
-            return Err(format!("这个账号已经开了 {MAX_TABS} 个页签，先关掉几个"));
-        }
-        let seq = s.next_seq;
-        s.next_seq += 1;
-        seq
+        if let Some(s) = map.get_mut(account_id).filter(|s| opening.valid(s) && !s.tabs.iter().any(|t| t.cut)) {
+            tab.return_to = Some(s.active().label.clone());
+            s.tabs.push(tab);
+            s.active_tab = s.tabs.len() - 1;
+            true
+        } else { false }
     };
-    // 新页签不带 cookie 快照也不自动填充：store 是共享的，登录态已经在里面
-    let tab = build_tab(app, account_id, seq, url, false, &[], manual)?;
-    {
-        let sessions = app.state::<Sessions>();
-        let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
-        let s = map.get_mut(account_id).ok_or("这个账号的页面没开着")?;
-        let mut tab = tab;
-        tab.return_to = Some(s.active().label.clone());
-        s.tabs.push(tab);
-        s.active_tab = s.tabs.len() - 1;
+    if !inserted {
+        let _ = close_view(app, &label, false);
+        return Err("页面已锁定、关闭或被切断".into());
     }
     refresh_layout(app);
     Ok(())
@@ -1242,6 +1239,7 @@ pub fn retry_scheme(app: &AppHandle, account_id: &str, scheme: &str) -> Result<(
 
 /// 切到某个页签。
 pub fn select_tab(app: &AppHandle, account_id: &str, index: usize) -> Result<(), String> {
+    let _ = set_picking(app, account_id, false);
     let popup = {
         let sessions = app.state::<Sessions>();
         let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
@@ -1316,6 +1314,8 @@ pub fn open_or_focus(
 ) -> Result<(), String> {
     let label = label_for(&account.id);
     let sessions = app.state::<Sessions>();
+    let epoch = sessions.epoch.load(Ordering::SeqCst);
+    if epoch % 2 == 0 { return Err("账号库已锁定".into()); }
 
     let exists = sessions
         .map
@@ -1334,7 +1334,13 @@ pub fn open_or_focus(
         // 只有首个页签自动填充：新页签共享登录态，用不着再填
         let tab = build_tab(app, &account.id, 0, parsed, true, cookies, None)?;
 
-        sessions.map.lock().map_err(|e| e.to_string())?.insert(
+        let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
+        if sessions.epoch.load(Ordering::SeqCst) != epoch {
+            drop(map);
+            let _ = close_view(app, &tab.label, false);
+            return Err("账号库已锁定，请重新打开会话".into());
+        }
+        map.insert(
             account.id.clone(),
             SessionState {
                 tabs: vec![tab],
@@ -1377,6 +1383,7 @@ pub fn is_open(app: &AppHandle, account_id: &str) -> bool {
 }
 
 pub fn list(app: &AppHandle) -> Result<Vec<SessionInfo>, String> {
+    sync_urls(app);
     let sessions = app.state::<Sessions>();
     let map = sessions.map.lock().map_err(|e| e.to_string())?;
     let mut out: Vec<SessionInfo> = map
@@ -1653,31 +1660,20 @@ fn ensure_usable(app: &AppHandle, account_id: &str) -> Result<(), String> {
 /// 把一个值填进用户最后点过的那个输入框——不依赖任何选择器的兜底手段。
 /// `login` 给了就先核站点：密码这类值只往账号登录地址所在的站填。
 /// 页签是会跳走的（点了个链接、在账号里开了别的地址），用户以为还在登录页，一点「填密码」就填给了别人。
-/// 只认域名 / IP，见 `same_host`
+/// 同源或明确授权的 SSO 来源，协议和端口必须匹配。
 pub fn fill_focused(app: &AppHandle, account_id: &str, value: &str, what: &str, login: Option<&str>) -> Result<(), String> {
     ensure_usable(app, account_id)?;
+    let view = webview_of(app, account_id)?;
+    let mut js = adapter::fill_focused_js(value, what);
     if let Some(login) = login {
-        let page = {
-            let sessions = app.state::<Sessions>();
-            let map = sessions.map.lock().map_err(|e| e.to_string())?;
-            let t = map.get(account_id).ok_or("这个账号的页面没开着")?.active();
-            let page = t.last_url.lock().map(|u| u.clone()).unwrap_or_default();
-            page
-        };
-        let (Ok(l), Ok(p)) = (login.trim().parse::<tauri::Url>(), page.parse::<tauri::Url>()) else {
-            return Err(format!("认不出当前页面在哪个站，{what}先不填"));
-        };
-        if !same_host(&l, &p) {
-            return Err(format!(
-                "当前页面在 {}，跟这个账号登录地址的域名 / IP（{}）对不上，{what}不往别的站填。确实要在这里登录，先点「设为直达页」",
-                p.host_str().unwrap_or("?"),
-                l.host_str().unwrap_or("?"),
-            ));
+        let page = native_url(&view)?;
+        let login: tauri::Url = login.trim().parse().map_err(|_| "登录地址无效")?;
+        if !same_host(&login, &page) {
+            return Err(format!("当前页面来源未获授权，{what}不往这里填。确实要在这里登录，请先设为登录直达页"));
         }
+        js = crate::origin_policy::guard(&login, &js);
     }
-    webview_of(app, account_id)?
-        .eval(&adapter::fill_focused_js(value, what))
-        .map_err(|e| e.to_string())
+    view.eval(&js).map_err(|e| e.to_string())
 }
 
 /// 在当前页签里打开查找框。原生 webview 得先拿到焦点，不然查找框里打不了字
@@ -1688,10 +1684,49 @@ pub fn find_in_page(app: &AppHandle, account_id: &str) -> Result<(), String> {
     v.eval(adapter::find_js()).map_err(|e| e.to_string())
 }
 
-/// 账号页面当前停在哪个地址（用来"把当前页设为登录直达 URL"）。
-///
-/// 页面没加载成功时**绝不能**去问地址——见 `SessionState::url_is_safe`，
-/// 那会让整个进程 SIGABRT。白板上点「设为直达页」正好踩的就是这条。
+/// 读取可空的原生 URL，避免导航竞争时 Wry 对 nil URL 的 unwrap。
+/// 只从命令/后台线程调用，不得持有 Sessions 锁或从原生导航回调重入。
+pub(crate) fn native_url(view: &Webview) -> Result<tauri::Url, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::{msg_send, rc::Retained, runtime::AnyObject};
+        use objc2_foundation::NSURL;
+        let (tx, rx) = std::sync::mpsc::channel();
+        view.with_webview(move |w| {
+            // SAFETY: with_webview 在主线程调用，URL 允许 nil；不使用 Wry 的 URL.unwrap()。
+            let text = unsafe {
+                let object = w.inner() as *mut AnyObject;
+                let url: Option<Retained<NSURL>> = msg_send![object, URL];
+                url.and_then(|u| u.absoluteString()).map(|text| text.to_string())
+            };
+            let _ = tx.send(text);
+        }).map_err(|e| e.to_string())?;
+        rx.recv_timeout(Duration::from_secs(2)).map_err(|_| "读取页面地址超时")?
+            .ok_or_else(|| "页面尚无地址".to_string())?.parse().map_err(|_| "页面地址无效".into())
+    }
+    #[cfg(not(target_os = "macos"))]
+    { view.url().map_err(|e| e.to_string()) }
+}
+
+/// 不持有 Sessions 锁等待主线程；用原生 URL 同步 SPA，而非相信页面上报。
+fn sync_urls(app: &AppHandle) {
+    let targets = {
+        let sessions = app.state::<Sessions>();
+        let Ok(map) = sessions.map.lock() else { return };
+        map.values().flat_map(|s| &s.tabs).filter(|t| !t.cut && t.url_is_safe())
+            .map(|t| (t.label.clone(), t.last_url.clone())).collect::<Vec<_>>()
+    };
+    for (label, stored) in targets {
+        if let Some(view) = app.get_webview(&label) {
+            if let Ok(url) = native_url(&view) {
+                if matches!(url.scheme(), "http" | "https") {
+                    if let Ok(mut last) = stored.lock() { *last = url.to_string(); }
+                }
+            }
+        }
+    }
+}
+
 pub fn current_url(app: &AppHandle, account_id: &str) -> Result<String, String> {
     {
         let sessions = app.state::<Sessions>();
@@ -1701,8 +1736,7 @@ pub fn current_url(app: &AppHandle, account_id: &str) -> Result<String, String> 
             return Err("页面还没加载出来，没有地址可取。先点「刷新重试」把页面打开".into());
         }
     }
-    webview_of(app, account_id)?
-        .url()
+    native_url(&webview_of(app, account_id)?)
         .map(|u| u.to_string())
         .map_err(|e| e.to_string())
 }
@@ -1720,6 +1754,7 @@ pub fn current_url(app: &AppHandle, account_id: &str) -> Result<String, String> 
 ///
 /// 返回被切断的页签数。调用方**必须先抄一次 cookie**——导航会丢掉内存里的会话态。
 pub fn cut_all(app: &AppHandle) -> usize {
+    sync_urls(app);
     let sessions = app.state::<Sessions>();
     let Ok(mut map) = sessions.map.lock() else { return 0 };
     let mut n = 0;
@@ -1832,7 +1867,7 @@ pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
     let now: Vec<(String, Option<tauri::Url>)> = labels
         .into_iter()
         .map(|(l, safe)| {
-            let url = if safe { app.get_webview(&l).and_then(|v| v.url().ok()) } else { None };
+            let url = if safe { app.get_webview(&l).and_then(|v| native_url(&v).ok()) } else { None };
             (l, url)
         })
         .collect();
@@ -1885,13 +1920,13 @@ pub fn keep_alive(app: &AppHandle, abnormal: bool) -> usize {
     n
 }
 
-/// 用户在某个账号页面里真的动了一下（adapter 的活动心跳报上来的），保活就从现在起重新计时
-pub fn mark_input(app: &AppHandle, label: &str) {
+/// 原生真人输入使当前可见账号的保活重新计时。
+pub fn mark_native_input(app: &AppHandle) {
     let sessions = app.state::<Sessions>();
-    let Ok(mut map) = sessions.map.lock() else { return };
-    if let Some(s) = map.values_mut().find(|s| s.tabs.iter().any(|t| t.label == label)) {
-        s.alive_at = KeepAliveClock::now();
-    }
+    let Ok(active) = sessions.active.try_lock() else { return };
+    let Ok(mut map) = sessions.map.try_lock() else { return };
+    if !sessions.visible.try_lock().map(|v| *v).unwrap_or(false) { return; }
+    if let Some(s) = map.get_mut(&*active) { s.alive_at = KeepAliveClock::now(); }
 }
 
 /// 改开着的会话的保活设置。没开着就算了，下次打开时从库里读。
@@ -1937,6 +1972,7 @@ pub fn mark_failure(app: &AppHandle, label: &str, reason: Option<String>) {
 
 /// 重新加载这个账号的页面。加载失败后的「刷新」按钮走这里。
 pub fn reload(app: &AppHandle, account_id: &str, url: &str) -> Result<(), String> {
+    sync_urls(app);
     let v = webview_of(app, account_id)?;
     // 刷新回页面自己停的地址，否则在控制台里点一下刷新就被踹回登录页，正在看的那一页就丢了。
     // 只有首个页签打不开时才回账号的登录直达 URL：那多半是地址本身有问题，用户可能刚改过
@@ -1965,51 +2001,53 @@ pub fn reload(app: &AppHandle, account_id: &str, url: &str) -> Result<(), String
 
 /// 进入/退出"手动指认输入框"模式。
 pub fn set_picking(app: &AppHandle, account_id: &str, on: bool) -> Result<(), String> {
-    if on {
-        ensure_usable(app, account_id)?;
+    if on { ensure_usable(app, account_id)?; }
+    let view = webview_of(app, account_id)?;
+    let page = if on { Some(native_url(&view)?) } else { None };
+    if let Some(page) = &page {
+        let login: String = crate::with_conn(&app.state::<crate::Vault>(), |c| {
+            c.query_row("SELECT login_url FROM accounts WHERE id=?1", [account_id], |r| r.get(0)).map_err(|e| e.to_string())
+        })?;
+        let login: tauri::Url = login.parse().map_err(|_| "登录地址无效")?;
+        if !fill_allowed(&login, page) { return Err("当前页面不在授权登录来源中，不能指认".into()); }
     }
-    {
+    let nonce = uuid::Uuid::new_v4().to_string();
+    let labels = {
         let sessions = app.state::<Sessions>();
         let mut map = sessions.map.lock().map_err(|e| e.to_string())?;
         let s = map.get_mut(account_id).ok_or("这个账号的页面没开着")?;
-        // 退出指认时把**所有**页签的标记都清掉：用户可能在指认途中切了页签，
-        // 只清当前那个会留下一个永远处在指认模式的页签，之后它点谁都当指认
-        if !on {
-            for t in s.tabs.iter_mut() {
-                t.picking = false;
-            }
-        } else {
-            s.active_mut().picking = true;
+        for t in &s.tabs { if let Ok(mut p) = t.picking.lock() { *p = None; } }
+        if let Some(page) = &page {
+            let t = s.active();
+            if t.label != view.label() { return Err("页签已切换，请重新指认".into()); }
+            *t.picking.lock().map_err(|e| e.to_string())? = Some(PickPermit {
+                nonce: nonce.clone(), origin: page.origin().ascii_serialization(), started: Instant::now(),
+            });
         }
-    }
-    if on {
-        return webview_of(app, account_id)?
-            .eval(&adapter::picker_js())
+        s.tabs.iter().map(|t| t.label.clone()).collect::<Vec<_>>()
+    };
+    if let Some(page) = page {
+        return view.eval(&crate::origin_policy::guard(&page, &adapter::picker_js(&nonce)))
             .map_err(|e| e.to_string());
     }
-    // 关的时候也要挨个关：指认途中切过页签的话，蓝条和取点脚本会留在别的页签上
-    let labels: Vec<String> = {
-        let sessions = app.state::<Sessions>();
-        let map = sessions.map.lock().map_err(|e| e.to_string())?;
-        map.get(account_id)
-            .map(|s| s.tabs.iter().map(|t| t.label.clone()).collect())
-            .unwrap_or_default()
-    };
-    for label in labels {
-        if let Some(v) = app.get_webview(&label) {
-            let _ = v.eval(adapter::stop_picker_js());
-        }
-    }
+    for label in labels { if let Some(v) = app.get_webview(&label) { let _ = v.eval(adapter::stop_picker_js()); } }
     Ok(())
 }
 
-/// 页面回传选择器时用：找出哪个账号正在指认模式。
-pub fn picking_account(app: &AppHandle, label: &str) -> Option<String> {
+pub fn take_pick(app: &AppHandle, label: &str, nonce: &str, page: &tauri::Url) -> Result<String, String> {
     let sessions = app.state::<Sessions>();
-    let map = sessions.map.lock().ok()?;
-    map.iter()
-        .find(|(_, s)| s.tabs.iter().any(|t| t.picking && t.label == label))
-        .map(|(id, _)| id.clone())
+    let active = sessions.active.lock().map_err(|e| e.to_string())?.clone();
+    let map = sessions.map.lock().map_err(|e| e.to_string())?;
+    if sessions.epoch.load(Ordering::SeqCst) % 2 == 0 { return Err("账号库已锁定".into()); }
+    for (id, s) in map.iter() {
+        if let Some(t) = s.tabs.iter().find(|t| t.label == label && !t.cut) {
+            if *id != active || s.active().label != label { return Err("页签已切换，请重新指认".into()); }
+            let permit = t.picking.lock().map_err(|e| e.to_string())?.take();
+            if permit.is_some_and(|p| p.accepts(nonce, page)) { return Ok(id.clone()); }
+            return Err("指认已过期或页面已改变，请重新指认".into());
+        }
+    }
+    Err("指认页签已关闭".into())
 }
 
 /// 绑定命令始终指定账号和稳定页签标识，切换焦点不会改变执行目标。
@@ -2183,7 +2221,7 @@ mod tests {
             fill_armed: Arc::new(Mutex::new(Instant::now())),
             cut: false,
             shown: false,
-            picking: false,
+            picking: Arc::new(Mutex::new(None)),
             external,
             seen_page: Arc::new(AtomicBool::new(seen)),
             download_only: false,
@@ -2420,7 +2458,7 @@ mod tests {
         let ok = |a: &str, b: &str| fill_allowed(&a.parse().unwrap(), &b.parse().unwrap());
         assert!(ok("https://signin.aliyun.com/login.htm", "https://signin.aliyun.com/x"));
         assert!(ok("https://account.aliyun.com/login", "https://signin.aliyun.com/login.htm"), "同站跳转要留着");
-        assert!(ok("https://a.example.com.cn/", "https://b.example.com.cn/"));
+        assert!(!ok("https://a.example.com.cn/", "https://b.example.com.cn/"));
         assert!(!ok("https://signin.aliyun.com/", "https://evil.com/"), "跳到别的站不能再填");
         assert!(!ok("https://a.example.com.cn/", "https://other.com.cn/"), "com.cn 不能当成一个站");
         assert!(!ok("https://a.co.uk/", "https://b.co.uk/"), "co.uk 同理");
@@ -2432,18 +2470,28 @@ mod tests {
     }
 
     #[test]
-    fn manual_fill_only_checks_domain_or_ip() {
+    fn manual_fill_requires_an_authorized_origin() {
         let ok = |a: &str, b: &str| same_host(&a.parse().unwrap(), &b.parse().unwrap());
-        assert!(ok("https://signin.aliyun.com/", "https://account.aliyun.com/x"), "同一个域名的子域名");
-        assert!(ok("https://aliyun.com/", "https://ram.console.aliyun.com/"), "主域名和多级子域名互通");
-        assert!(ok("https://a.example.com.cn/", "https://x.y.example.com.cn/"));
-        assert!(ok("https://signin.aliyun.com/", "http://signin.aliyun.com/"), "协议不管");
-        assert!(ok("http://203.0.113.10:8888/login", "http://203.0.113.10:9000/"), "同一个 IP 换端口也行");
-        assert!(ok("http://localhost:8080/", "http://localhost:9090/"));
-        assert!(!ok("https://signin.aliyun.com/", "https://evil.com/"));
-        assert!(!ok("https://a.example.com.cn/", "https://other.com.cn/"), "com.cn 不能当成一个域名");
-        assert!(!ok("http://203.0.113.10/", "http://203.0.113.11/"));
-        assert!(!ok("https://signin.aliyun.com/", "https://203.0.113.10/"));
+        assert!(ok("https://signin.aliyun.com/", "https://account.aliyun.com/x"));
+        for (a, b) in [
+            ("https://a.github.io/", "https://b.github.io/"),
+            ("https://aliyun.com/", "https://ram.console.aliyun.com/"),
+            ("https://a.example.com.cn/", "https://x.y.example.com.cn/"),
+            ("https://signin.aliyun.com/", "http://signin.aliyun.com/"),
+            ("http://203.0.113.10:8888/login", "http://203.0.113.10:9000/"),
+            ("http://localhost:8080/", "http://localhost:9090/"),
+        ] { assert!(!ok(a, b), "{a} -> {b}"); }
+    }
+
+    #[test]
+    fn pick_capability_is_document_scoped_and_expires() {
+        let mut permit = PickPermit { nonce: "document-one".into(), origin: "https://login.example.com".into(), started: Instant::now() };
+        let page = "https://login.example.com/login".parse().unwrap();
+        assert!(permit.accepts("document-one", &page));
+        assert!(!permit.accepts("document-two", &page));
+        assert!(!permit.accepts("document-one", &"https://evil.example.com".parse().unwrap()));
+        permit.started = Instant::now() - Duration::from_secs(61);
+        assert!(!permit.accepts("document-one", &page));
     }
 
     #[test]

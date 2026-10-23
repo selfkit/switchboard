@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const AGENT = fs.readFileSync(require('node:path').join(__dirname, '../src-tauri/src/binding-agent.js'), 'utf8');
+const dir = require('node:path').join(__dirname, '../src-tauri/src/');
+const originPolicy = fs.readFileSync(dir + 'origin-policy.js', 'utf8').replace('__SB_ORIGIN_GROUPS__', fs.readFileSync(dir + 'credential-origins.json', 'utf8'));
 let current, now = 0, serial = 0;
 const timers = new Map();
 const within = (f, fn) => { const old = current; current = f; try { return fn(); } finally { current = old; } };
@@ -33,9 +35,9 @@ function node(f, id, tag = 'INPUT', r = f.window.document) {
   Object.defineProperty(el, 'value', { get() { return this._value; }, set(v) { this._value = v; } });
   r.children.push(el); return el;
 }
-function frame(url = 'https://console.example.com/login', parent = null, id = 'frame', parentRoot) {
+function frame(url = 'https://console.example.com/login', parent = null, id = 'frame', parentRoot, secure = true) {
   const f = { reports: [], received: [], win: {}, doc: {}, parent };
-  const w = f.window = { URL, URLSearchParams, location: new URL(url), CSS: { escape: x => x }, crypto: { randomUUID: () => 'uuid-' + (++serial) },
+  const w = f.window = { URL, URLSearchParams, location: new URL(url), CSS: { escape: x => x }, crypto: secure ? { randomUUID: () => 'uuid-' + (++serial) } : { getRandomValues: a => { for (let i = 0; i < a.length; i++) a[i] = (++serial) % 256; return a; } },
     Date: { now: () => now }, getComputedStyle: e => ({ display: e.hidden ? 'none' : 'block', visibility: 'visible' }),
     Event: class { constructor(type) { this.type = type; } }, HTMLInputElement: function () {},
     setTimeout: (fn, ms) => schedule(fn, ms), setInterval: (fn, ms) => schedule(fn, ms, ms), clearTimeout: id => timers.delete(id), clearInterval: id => timers.delete(id),
@@ -58,7 +60,7 @@ function frame(url = 'https://console.example.com/login', parent = null, id = 'f
     }, 1);
   };
   if (parent) { const el = node(parent, id, 'IFRAME', parentRoot); el.src = url; el.contentWindow = f.proxy; f.element = el; }
-  within(f, () => vm.runInContext(AGENT, w)); return f;
+  within(f, () => { vm.runInContext(originPolicy, w); vm.runInContext(AGENT, w); }); return f;
 }
 const page = f => ({ origin: f.window.location.origin, pathname: f.window.location.pathname, hashRoute: f.window.location.hash.startsWith('#/') ? f.window.location.hash.slice(1).split('?')[0] : null, queryEquals: {} });
 const loc = id => ({ kind: 'css', value: '#' + id });
@@ -79,9 +81,9 @@ test('同源同 selector 的两个 iframe 只填写指定路径，值不广播',
   apply(top, m); assert.equal(code(top), 'filled'); assert.equal(ea.value, ''); assert.equal(eb.value, 'secret');
   assert(!a.received.some(m => 'value' in m));
 });
-test('Shadow → 跨源同站 frame → Shadow 路径指认、保存后可复现', () => {
-  const top = frame(), host = node(top, 'host', 'SECTION'); host.shadowRoot = root(host);
-  const child = frame('https://login.example.com/form', top, 'login', host.shadowRoot);
+test('Shadow → 明确授权的跨源 frame → Shadow 路径指认、保存后可复现', () => {
+  const top = frame('https://signin.aliyun.com/login'), host = node(top, 'host', 'SECTION'); host.shadowRoot = root(host);
+  const child = frame('https://passport.aliyun.com/form', top, 'login', host.shadowRoot);
   const inner = node(child, 'inner', 'SECTION'); inner.shadowRoot = root(inner);
   const input = node(child, 'tenant', 'INPUT', inner.shadowRoot);
   command(top, { op: 'pick', document: doc(top), pickId: 'pick' }); tick(10); click(child, input); tick(20);
@@ -120,18 +122,18 @@ test('SPA 导航使旧任务失效，旧 apply 不能在新 route 填写', () =>
   locate(top, { ...target(top, 'u'), page: { ...page(top), pathname: '/login' } }, { stepId: 'new' }); assert.equal(code(top), 'page_mismatch');
 });
 test('取消清除待填任务，晚到的 apply 无效', () => {
-  const top = frame(), child = frame('https://login.example.com/form', top, 'login'), input = node(child, 'u');
+  const top = frame(), child = frame('https://console.example.com/form', top, 'login'), input = node(child, 'u');
   const m = locate(top, target(top, 'u', [{ kind: 'frame', locator: loc('login'), page: page(child) }]));
   command(top, { op: 'cancel' }); tick(10); apply(top, m); assert.equal(input.value, '');
 });
 test('frame 跳转后不接受旧任务，即使父级持有旧引用', () => {
-  const top = frame(), child = frame('https://login.example.com/form', top, 'login'), input = node(child, 'u');
+  const top = frame(), child = frame('https://console.example.com/form', top, 'login'), input = node(child, 'u');
   const m = locate(top, target(top, 'u', [{ kind: 'frame', locator: loc('login'), page: page(child) }]));
-  child.window.location = new URL('https://login.example.com/change-password'); apply(top, m);
+  child.window.location = new URL('https://console.example.com/change-password'); apply(top, m);
   assert.equal(input.value, ''); assert.equal(code(top), 'stale_document');
 });
 test('跨站 frame 与同站旁系 frame 伪造消息不能获取/写入值', () => {
-  const top = frame(), child = frame('https://login.example.com/form', top, 'login'), evil = frame('https://ads.evil.test/', top, 'evil'), sibling = frame('https://console.example.com/ad', top, 'ad');
+  const top = frame(), child = frame('https://console.example.com/form', top, 'login'), evil = frame('https://ads.evil.test/', top, 'evil'), sibling = frame('https://console.example.com/ad', top, 'ad');
   const input = node(child, 'u'), path = [{ kind: 'frame', locator: loc('login'), page: page(child) }];
   const m = locate(top, target(top, 'u', path));
   within(sibling, () => child.proxy.postMessage({ __switchboardBindingsV1: true, ...m, op: 'apply', value: 'forged' }, child.window.location.origin)); tick(20);
@@ -139,7 +141,7 @@ test('跨站 frame 与同站旁系 frame 伪造消息不能获取/写入值', ()
   locate(top, target(top, 'u', [{ kind: 'frame', locator: loc('evil'), page: page(evil) }]), { stepId: 'evil' }); assert.equal(code(top), 'frame_mismatch');
 });
 test('不接受脚本伪造点击；子 frame 的 Esc 撤销整次指认', () => {
-  const top = frame(), child = frame('https://login.example.com/form', top, 'login'), input = node(child, 'u');
+  const top = frame(), child = frame('https://console.example.com/form', top, 'login'), input = node(child, 'u');
   command(top, { op: 'pick', document: doc(top), pickId: 'pick' }); tick(10); click(child, input, false); tick(10);
   assert(!top.reports.some(e => e.kind === 'picked'));
   within(child, () => child.doc.keydown.forEach(fn => fn({ key: 'Escape' }))); tick(20);
@@ -171,4 +173,20 @@ test('文档没变时不再每秒上报，只保留 30 秒心跳', () => {
   within(top, () => top.window.__sbBindings.hello());
   assert.equal(count(), initial + 2, 'SPA 路由变了要立刻上报');
 });
+
+
+test('HTTP 局域网站点缺少 randomUUID 时仍可指认和执行', () => {
+  const top = frame('http://192.168.1.10/login', null, 'frame', undefined, false), input = node(top, 'u');
+  assert(doc(top));
+  const m = locate(top, target(top, 'u')); assert.equal(code(top), 'ready');
+  apply(top, m); assert.equal(input.value, 'secret'); assert.equal(code(top), 'filled');
+});
+test('新代理不发现多租户公共后缀下的其他租户', () => {
+  const top = frame('https://a.github.io/login'), child = frame('https://b.github.io/form', top, 'login');
+  node(child, 'u');
+  locate(top, target(top, 'u', [{ kind: 'frame', locator: loc('login'), page: page(child) }]));
+  tick(30100); assert.notEqual(code(top), 'ready');
+  assert(!child.received.some(m => 'value' in m));
+});
+
 console.log('ALL PASS');

@@ -56,6 +56,8 @@ commands.allow = [
   "get_download_settings",
   "set_download_settings",
   "move_download",
+  "pending_downloads",
+  "acknowledge_download",
   "write_clipboard",
   "clear_clipboard_later",
   "enter_demo",
