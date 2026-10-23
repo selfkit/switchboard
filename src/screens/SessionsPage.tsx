@@ -534,6 +534,16 @@ export default function SessionsPage({
                     {tab.failed && " · 打不开"}
                     {!tab.external && !tab.failed && !tab.loaded && " · 加载中"}
                   </span>
+                  <button type="button" title="复制此页签链接" aria-label="复制此页签链接"
+                    onClick={e => { e.stopPropagation(); void run(async () => {
+                      const latest = (await api.listActiveSessions()).find(s => s.account_id === current.id)?.tabs.find(t => t.label === tab.label);
+                      if (!latest?.url) throw new Error("这个页签还没有地址");
+                      if (!(await copyText(latest.url))) throw new Error("复制失败，请检查剪贴板权限");
+                      setTip(`已复制地址：${latest.url}`);
+                    }); }}
+                    style={{ border: 0, background: "transparent", color: C.brand, padding: "0 2px", flexShrink: 0, fontSize: 11 }}>
+                    复制
+                  </button>
                   {/* 首个页签不给关：关掉等于关账号，那件事归左边账号上的 × */}
                   {i > 0 && (
                     <span
