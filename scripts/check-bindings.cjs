@@ -189,4 +189,33 @@ test('新代理不发现多租户公共后缀下的其他租户', () => {
   assert(!child.received.some(m => 'value' in m));
 });
 
+test('同 URL 分步登录只在可编辑字段变化时通知，不发送值或更换文档', () => {
+  const top = frame(), username = node(top, 'username'), password = node(top, 'password');
+  password.type = 'password'; password.hidden = true;
+  tick(1000);
+  const before = top.reports.filter(e => e.kind === 'fieldsChanged').length;
+  const original = doc(top);
+  username.value = 'private'; tick(1000);
+  assert.equal(top.reports.filter(e => e.kind === 'fieldsChanged').length, before);
+  username.hidden = true; password.hidden = false; tick(1000);
+  const events = top.reports.filter(e => e.kind === 'fieldsChanged');
+  assert.equal(events.length, before + 1); assert.equal(doc(top), original);
+  assert.deepEqual(Object.keys(events.at(-1)).sort(), ['document', 'kind']);
+  const t = target(top, 'password'); t.expected.type = 'password';
+  apply(top, locate(top, t), 'password-value'); assert.equal(password.value, 'password-value');
+  tick(2000); assert.equal(top.reports.filter(e => e.kind === 'fieldsChanged').length, before + 1);
+});
+
+test('已授权同站 iframe 的下一步字段变化传递到顶层', () => {
+  const top = frame(), child = frame('https://login.example.com/form', top, 'login');
+  const password = node(child, 'p'); password.hidden = true;
+  const t = target(top, 'p', [{ kind: 'frame', locator: loc('login'), page: page(child) }]);
+  locate(top, t); assert.equal(code(top), 'unsupported_target');
+  tick(1000);
+  const count = top.reports.filter(e => e.kind === 'fieldsChanged').length;
+  password.hidden = false; tick(1100);
+  assert.equal(top.reports.filter(e => e.kind === 'fieldsChanged').length, count + 1);
+  apply(top, locate(top, t)); assert.equal(password.value, 'secret');
+});
+
 console.log('ALL PASS');

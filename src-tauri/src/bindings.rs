@@ -284,6 +284,7 @@ struct View {
     page: Option<Page>,
     armed: Option<Instant>,
     attempted: HashSet<String>,
+    fields_changed: bool,
     pick: Option<(String, Instant)>,
     draft: Option<Draft>,
     run: Option<Run>,
@@ -536,6 +537,7 @@ pub enum Event {
         document: String,
         page: Page,
     },
+    FieldsChanged { document: String },
     Picked {
         document: String,
         #[serde(rename = "pickId")]
@@ -597,11 +599,24 @@ pub fn report(app: &AppHandle, webview: &Webview, event: Event) -> Result<(), St
                 let mut m = state.0.lock().map_err(|e| e.to_string())?;
                 let v = m.entry(label.into()).or_default();
                 v.attempted.clear();
+                v.fields_changed = false;
                 if v.pick.as_ref().is_some_and(|(_, t)| t.elapsed().as_secs() >= 60) {
                     v.pick = None;
                 }
                 v.document = document;
                 v.page = Some(page);
+            }
+            let _ = start(app, &account, label, None, false, true);
+        }
+        Event::FieldsChanged { document } => {
+            {
+                let state = app.state::<Bindings>();
+                let mut m = state.0.lock().map_err(|e| e.to_string())?;
+                let v = m.get_mut(label).ok_or("页面尚未就绪")?;
+                if v.document != document { return Err("页面已变化".into()); }
+                v.fields_changed = true;
+                if v.run.as_ref().is_some_and(|r| r.status == "running") { return Ok(()); }
+                retry_missing_targets(v);
             }
             let _ = start(app, &account, label, None, false, true);
         }
@@ -674,6 +689,18 @@ pub fn report(app: &AppHandle, webview: &Webview, event: Event) -> Result<(), St
     }
     emit(app);
     Ok(())
+}
+
+// 只重试未出现或不可编辑的目标；成功、非空跳过和被网页拒绝的值不重复写入。
+fn retry_missing_targets(v: &mut View) {
+    v.fields_changed = false;
+    if let Some(run) = &v.run {
+        for item in &run.results {
+            if matches!(item.code.as_str(), "target_not_found" | "unsupported_target" | "timeout") {
+                v.attempted.remove(&item.binding_id);
+            }
+        }
+    }
 }
 
 pub fn start(
@@ -771,8 +798,8 @@ async fn execute(
     overwrite: bool,
     mut rx: mpsc::Receiver<(String, String)>,
 ) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
     for b in rows {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         let since = Instant::now();
         if !running(&app, &label, &rid, &document) {
             return;
@@ -879,12 +906,34 @@ async fn execute(
         }
     }
     let _ = eval(&app, &label, serde_json::json!({"op":"finish","runId":rid}));
+    let retry = app.state::<Bindings>().0.lock().is_ok_and(|mut m| {
+        m.get_mut(&label).is_some_and(|v| {
+            if v.document != document || !v.fields_changed || !v.run.as_ref().is_some_and(|r| r.id == rid && r.status != "running") { return false; }
+            retry_missing_targets(v);
+            true
+        })
+    });
+    if retry { let _ = start(&app, &account, &label, None, false, true); }
     emit(&app);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn form_change_retries_only_missing_targets() {
+        let mut v = View::default();
+        let codes = ["filled", "already_matches", "nonempty_skipped", "value_rejected", "target_not_found", "unsupported_target", "timeout"];
+        v.attempted = codes.iter().map(|s| s.to_string()).collect();
+        v.fields_changed = true;
+        v.run = Some(Run { id: "r".into(), document_id: "d".into(), status: "partial".into(),
+            results: codes.iter().map(|code| ItemResult { binding_id: code.to_string(), label: code.to_string(), code: code.to_string(), duration_ms: None }).collect() });
+        retry_missing_targets(&mut v);
+        assert!(!v.fields_changed);
+        for code in &codes[..4] { assert!(v.attempted.contains(*code)); }
+        for code in &codes[4..] { assert!(!v.attempted.contains(*code)); }
+    }
+
     fn account() -> Account {
         serde_json::from_value(serde_json::json!({
             "id":"a", "platform":"其他", "owner_type":"", "related_app":"", "account_role":"", "login_url":"https://example.com/login", "username":"alice", "credential":"pw", "totp_secret":"", "backup_contact":"", "remark":"",

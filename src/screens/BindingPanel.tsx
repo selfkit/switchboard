@@ -20,6 +20,7 @@ const pageName = (p: api.BindingPage) => p.origin + p.pathname + (Object.keys(p.
 export default function BindingPanel({ account, tabLabel, ready }: { account: api.Account; tabLabel: string; ready: boolean }) {
   const [state, setState] = useState<api.BindingState | null>(null);
   const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<api.FieldBinding | null>(null);
   const [source, setSource] = useState("username");
@@ -41,7 +42,7 @@ export default function BindingPanel({ account, tabLabel, ready }: { account: ap
     return () => { alive = false; clearInterval(timer); void un.then(f => f()); };
   }, [account.id, tabLabel]);
   const action = async (fn: () => Promise<unknown>) => {
-    setBusy(true); setErr("");
+    setBusy(true); setErr(""); setNotice("");
     try { await fn(); await refresh(); } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   };
   const button = (label: string, fn: () => Promise<unknown>, disabled = false) => (
@@ -57,9 +58,10 @@ export default function BindingPanel({ account, tabLabel, ready }: { account: ap
       id: editing?.id, pickId: state?.draft?.pickId, label: name, enabled: editing?.enabled ?? true, automatic: auto, valueRef: refOf(source),
     });
     setEditing(null);
+    setNotice(fill ? "绑定已保存，正在试填；请查看下方填写结果。" : "绑定已保存。可点击「填写」验证；分步登录请进入下一步后继续绑定密码框。");
     if (fill) await api.runFieldBindings(account.id, tabLabel, id, overwrite);
   };
-  return <details style={{ fontSize: 11, color: C.sub, border: `1px solid ${C.border}`, borderRadius: 6, padding: "7px 6px", lineHeight: 1.6 }}>
+  return <details open style={{ fontSize: 11, color: C.sub, border: `1px solid ${C.border}`, borderRadius: 6, padding: "7px 6px", lineHeight: 1.6 }}>
     <summary style={{ cursor: "pointer", color: C.text }}>输入框绑定{state?.bindings.length ? ` · ${state.bindings.length}` : ""}</summary>
     <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 7 }}>
       <span>选择网页输入框，再关联左侧字段。绑定仅用于此账号和指定页面；暂不支持跨站内嵌页面。</span>
@@ -67,7 +69,11 @@ export default function BindingPanel({ account, tabLabel, ready }: { account: ap
       {!state?.enabled && <span>当前使用旧平台适配；保存首条绑定后自动切换。</span>}
       {state?.enabled && <span>旧平台自动填写已停用；取消勾选后刷新可切回。</span>}
       {state?.page && <span title={pageName(state.page)} style={{ overflowWrap: "anywhere", color: C.muted }}>当前：{pageName(state.page)}</span>}
-      {button("＋ 选择输入框", async () => { setEditing(null); choose("username"); await api.beginBindingPick(account.id, tabLabel); }, !ready || running || state?.picking)}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        {sources.map(s => <span key={s.key}>{button(`绑定${s.label}`, async () => {
+          setEditing(null); choose(s.key); await api.beginBindingPick(account.id, tabLabel);
+        }, !ready || state?.picking)}</span>)}
+      </div>
       {state?.picking && <span style={{ color: C.brand }}>到右侧点击一个文本输入框，60 秒内有效。</span>}
       {(state?.draft || editing) && <div style={{ display: "flex", flexDirection: "column", gap: 6, borderLeft: `2px solid ${C.brand}`, paddingLeft: 7 }}>
         <strong>{state?.draft ? "已选中输入框" : "编辑绑定"}</strong>
@@ -98,6 +104,7 @@ export default function BindingPanel({ account, tabLabel, ready }: { account: ap
         <strong>{messages[state.run.status] || state.run.status}</strong>
         {state.run.results.map(r => <div key={r.bindingId}>{r.label}：{messages[r.code] || r.code}</div>)}
       </div>}
+      {notice && <div role="status" style={{ color: C.brand }}>{notice}</div>}
       {err && <div role="alert" style={{ color: C.danger, overflowWrap: "anywhere" }}>{err}</div>}
     </div>
   </details>;

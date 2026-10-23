@@ -11,6 +11,7 @@
     return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
   };
   let documentId = token(), href = location.href, task = null, picking = null;
+  let visibleFields = [], fieldsParentOrigin = null;
   let pickTimer = 0, hint = null, heartbeat = 0, registered = false, lastReported = '', lastReportAt = 0, retryAt = 0;
   const page = () => {
     const u = new URL(location.href), queryEquals = {};
@@ -239,12 +240,17 @@
     const m = e.data;
     if (!m || m[CHANNEL] !== true || !sameSite(location.origin, e.origin)) return;
     if (!top && e.source === window.parent) {
+      fieldsParentOrigin = e.origin;
+      if (!heartbeat) heartbeat = setInterval(checkFields, 1000);
       if (m.op === 'pick') startPick(m, e.origin);
       else if (m.op === 'stopPick') stopPick();
       else if (m.op === 'locate') startLocate(m, e.origin);
       else if (m.op === 'apply') apply(m);
       else if (m.op === 'cancel' && (!m.runId || (task && task.runId === m.runId && task.stepId === m.stepId))) clearTask();
       return;
+    }
+    if (m.kind === 'fieldsChanged' && frames().some(f => f.e.contentWindow === e.source && f.origin === e.origin)) {
+      reportFieldsChanged(); return;
     }
     if (m.kind === 'pickCancelled' && picking && m.pickId === picking.pickId && m.document === picking.document && frames().some(f => f.e.contentWindow === e.source && f.origin === e.origin)) { cancelPick(); return; }
     if (m.kind === 'picked' && picking && m.pickId === picking.pickId && m.document === picking.document) {
@@ -267,10 +273,26 @@
   const REPORT_EVERY_MS = 30000;
   const RETRY_MS = 1000;
   const LOCKED_RETRY_MS = 10000;
+  function reportFieldsChanged() {
+    if (top) {
+      if (registered && documentId === lastReported) report({ kind: 'fieldsChanged', document: documentId });
+    } else if (fieldsParentOrigin) post(window.parent, fieldsParentOrigin, { kind: 'fieldsChanged' });
+  }
+  function checkFields() {
+    // 分步登录可能不改变 URL；仅在可编辑控件集合改变时通知后端，不发送字段值。
+    const fields = [];
+    roots(document, el => {
+      if (['INPUT', 'TEXTAREA'].includes(el.tagName) && editable(el)) fields.push(el);
+    });
+    const fieldsChanged = fields.length !== visibleFields.length || fields.some((el, i) => el !== visibleFields[i]);
+    visibleFields = fields;
+    if (fieldsChanged) reportFieldsChanged();
+  }
   function hello() {
     if (!top) return;
     refreshDocument();
     if (!/^https?:$/.test(location.protocol)) return;
+    checkFields();
     const now = Date.now();
     const changed = documentId !== lastReported;
     if (!changed && registered && now - lastReportAt < REPORT_EVERY_MS) return;
@@ -307,13 +329,16 @@
     if (heartbeat) { clearInterval(heartbeat); heartbeat = 0; }
   });
   window.addEventListener('pageshow', e => {
-    if (!top) return;
+    if (!top) {
+      if (fieldsParentOrigin && !heartbeat) heartbeat = setInterval(checkFields, 1000);
+      return;
+    }
     if (!heartbeat) heartbeat = setInterval(hello, 1000);
     // 从 bfcache 回来时后端状态可能已经变了，强制重报一次；普通首次 pageshow 不重复报。
     if (e && e.persisted) { registered = false; hello(); }
   });
   // SPA 路由不触发原生 on_page_load；同时覆盖首次初始化早于会话登记的情况。
-  // 只在顶层起心跳：所有 frame 都注入这份脚本，但子 frame 不需要每秒跑 hello。
+  // 顶层维护文档心跳；子 frame 仅在收到允许的父页面命令后检测字段变化。
   if (top) {
     heartbeat = setInterval(hello, 1000);
     hello();

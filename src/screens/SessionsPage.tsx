@@ -344,6 +344,9 @@ export default function SessionsPage({
                       {currentState === "failed" ? "页面没打开，先刷新" : "页面加载中…"}
                     </div>
                   )}
+                  {currentInfo && !currentInfo.tabs[currentInfo.active_tab]?.external && (
+                    <BindingPanel key={currentInfo.window_label} account={current} tabLabel={currentInfo.window_label} ready={currentState === "ok"} />
+                  )}
                   {currentInfo && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: C.sub }}>
                       <label
@@ -380,9 +383,6 @@ export default function SessionsPage({
                         </div>
                       )}
                     </div>
-                  )}
-                  {currentInfo && !currentInfo.tabs[currentInfo.active_tab]?.external && (
-                    <BindingPanel key={currentInfo.window_label} account={current} tabLabel={currentInfo.window_label} ready={currentState === "ok"} />
                   )}
                   <button
                     type="button"
