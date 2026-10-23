@@ -1065,10 +1065,7 @@ pub fn autofill_for(app: &AppHandle, account_id: &str) -> Option<(tauri::Url, St
     .ok()?;
     let cfg = cfg.filter(|c| c.trigger_event != "skip" && !c.username_selector.is_empty() && !c.password_selector.is_empty())?;
     let login: tauri::Url = a.login_url.trim().parse().ok()?;
-    let path = serde_json::to_string(login.path()).ok()?;
-    let fill = adapter::fill_js(&cfg, &a.username, &a.credential);
-    let js = origin_policy::guard(&login, &format!("if (location.pathname === {path}) {{ {fill} }}"));
-    Some((login, js))
+    Some((login, adapter::fill_js(&cfg, &a.username, &a.credential)))
 }
 
 // ----------------------------------------------------------- 输入框与字段绑定

@@ -734,7 +734,7 @@ fn download_finished(app: &AppHandle, label: &str) {
     });
 }
 
-/// 凭据默认同源，仅放行逐个审核的已知 SSO 来源。
+/// 同一可注册域名的登录子域自动兼容；公共后缀表区分不同托管租户。
 fn same_host(login: &tauri::Url, page: &tauri::Url) -> bool { fill_allowed(login, page) }
 pub(crate) fn fill_allowed(login: &tauri::Url, page: &tauri::Url) -> bool {
     crate::origin_policy::allows(login, page)
@@ -864,7 +864,7 @@ fn build_tab(
                 // 每次现取：页面开着的时候账号密码、平台选择器都可能被改过（编辑账号、指认输入框）
                 if let Some((login, js)) = crate::autofill_for(webview.app_handle(), &fill_id) {
                     if fill_allowed(&login, payload.url()) {
-                        let _ = webview.eval(&js);
+                        let _ = webview.eval(&crate::origin_policy::guard(payload.url(), &js));
                     }
                 }
             }
@@ -1660,7 +1660,7 @@ fn ensure_usable(app: &AppHandle, account_id: &str) -> Result<(), String> {
 /// 把一个值填进用户最后点过的那个输入框——不依赖任何选择器的兜底手段。
 /// `login` 给了就先核站点：密码这类值只往账号登录地址所在的站填。
 /// 页签是会跳走的（点了个链接、在账号里开了别的地址），用户以为还在登录页，一点「填密码」就填给了别人。
-/// 同源或明确授权的 SSO 来源，协议和端口必须匹配。
+/// 同一站点的子域自动兼容；IP/本地主机按完整来源匹配。
 pub fn fill_focused(app: &AppHandle, account_id: &str, value: &str, what: &str, login: Option<&str>) -> Result<(), String> {
     ensure_usable(app, account_id)?;
     let view = webview_of(app, account_id)?;
@@ -1669,9 +1669,9 @@ pub fn fill_focused(app: &AppHandle, account_id: &str, value: &str, what: &str, 
         let page = native_url(&view)?;
         let login: tauri::Url = login.trim().parse().map_err(|_| "登录地址无效")?;
         if !same_host(&login, &page) {
-            return Err(format!("当前页面来源未获授权，{what}不往这里填。确实要在这里登录，请先设为登录直达页"));
+            return Err(format!("当前页面与账号登录地址不属于同一站点，{what}先不填"));
         }
-        js = crate::origin_policy::guard(&login, &js);
+        js = crate::origin_policy::guard(&page, &js);
     }
     view.eval(&js).map_err(|e| e.to_string())
 }
@@ -2009,7 +2009,7 @@ pub fn set_picking(app: &AppHandle, account_id: &str, on: bool) -> Result<(), St
             c.query_row("SELECT login_url FROM accounts WHERE id=?1", [account_id], |r| r.get(0)).map_err(|e| e.to_string())
         })?;
         let login: tauri::Url = login.parse().map_err(|_| "登录地址无效")?;
-        if !fill_allowed(&login, page) { return Err("当前页面不在授权登录来源中，不能指认".into()); }
+        if !fill_allowed(&login, page) { return Err("当前页面与账号登录地址不属于同一站点，不能指认".into()); }
     }
     let nonce = uuid::Uuid::new_v4().to_string();
     let labels = {
@@ -2458,7 +2458,7 @@ mod tests {
         let ok = |a: &str, b: &str| fill_allowed(&a.parse().unwrap(), &b.parse().unwrap());
         assert!(ok("https://signin.aliyun.com/login.htm", "https://signin.aliyun.com/x"));
         assert!(ok("https://account.aliyun.com/login", "https://signin.aliyun.com/login.htm"), "同站跳转要留着");
-        assert!(!ok("https://a.example.com.cn/", "https://b.example.com.cn/"));
+        assert!(ok("https://a.example.com.cn/", "https://b.example.com.cn/"));
         assert!(!ok("https://signin.aliyun.com/", "https://evil.com/"), "跳到别的站不能再填");
         assert!(!ok("https://a.example.com.cn/", "https://other.com.cn/"), "com.cn 不能当成一个站");
         assert!(!ok("https://a.co.uk/", "https://b.co.uk/"), "co.uk 同理");
@@ -2470,13 +2470,14 @@ mod tests {
     }
 
     #[test]
-    fn manual_fill_requires_an_authorized_origin() {
+    fn manual_fill_preserves_normal_subdomains_and_isolates_other_sites() {
         let ok = |a: &str, b: &str| same_host(&a.parse().unwrap(), &b.parse().unwrap());
+        assert!(ok("https://admin.example.com/", "https://login.example.com/auth"));
         assert!(ok("https://signin.aliyun.com/", "https://account.aliyun.com/x"));
+        assert!(ok("https://aliyun.com/", "https://ram.console.aliyun.com/"));
+        assert!(ok("https://a.example.com.cn/", "https://x.y.example.com.cn/"));
         for (a, b) in [
             ("https://a.github.io/", "https://b.github.io/"),
-            ("https://aliyun.com/", "https://ram.console.aliyun.com/"),
-            ("https://a.example.com.cn/", "https://x.y.example.com.cn/"),
             ("https://signin.aliyun.com/", "http://signin.aliyun.com/"),
             ("http://203.0.113.10:8888/login", "http://203.0.113.10:9000/"),
             ("http://localhost:8080/", "http://localhost:9090/"),

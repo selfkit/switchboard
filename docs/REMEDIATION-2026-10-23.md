@@ -6,25 +6,25 @@
 
 | 问题 | 本轮变更 | 验证及边界 |
 |---|---|---|
-| A01 凭据跨来源 | Rust 与两个网页代理共用明确的来源策略；默认要求同源，协议和端口均纳入比较。已知阿里云登录来源逐个列出。执行前再次检查实际页面来源 | 回归覆盖不同 github.io 租户、未授权兄弟子域、异常端口、HTTPS 降级，以及已授权 iframe 正常填写 |
+| A01 凭据跨来源 | Rust 与两个网页代理共用包含 PRIVATE 部分的公共后缀表。同一可注册域名下的正常子域登录自动兼容，不增加名单配置；执行处仍限定到本次原生检查的实际来源 | 回归覆盖 admin.example.com → login.example.com、com.cn/co.uk、同站不同端口、国际化域名，以及不同 github.io/appspot.com 租户隔离和 HTTPS 降级 |
 | A02 旧版指认目标错误 | 指认绑定页签、来源、随机 nonce 和 60 秒期限；导航、切页签、锁定使许可失效；拒绝非活动账号回调。回调只读取平台/登录地址并保存选择器，不再读取密码或触发立即填写 | 许可的 nonce、来源和过期检查有 Rust 测试；原生导航和迟到 IPC 组合仍需实机验收 |
 | A03 锁定后创建窗口 | 新窗口统一检查解锁代次、账号会话代次和区域切断状态；创建中的窗口也计入数量上限。弹窗先隐藏，子 WebView 先在屏幕外创建并隐藏，再导航和登记；完成时重新验证，过期创建销毁 | macOS 与 Windows 分支均编译通过；原生锁定与开窗竞争仍需实机验收 |
 | A04 伪造活动心跳 | 移除远端 touch_activity 权限和网页心跳转发。macOS 使用 AppKit 本地输入，Windows 读取系统输入变化并要求 App 位于前台；本地主窗口保留活动命令 | 网页消息不能续期、远端 ACL 不再允许该命令；实际网页焦点下的输入计时需实机验收 |
 | A05 HTTP 字段绑定 | 缺少 crypto.randomUUID 时使用 crypto.getRandomValues 生成随机文档标识 | HTTP 局域网站点模型中执行实际代理，定位和填写通过 |
-| A06 修改密码框误填 | 自动填写排除 new-password（含 section token）、非空、只读、禁用和错误类型的控件；赋值前再次检查。仅允许登录直达页的同一路径，SPA 路由变化结束旧轮询 | 旧 agent 回归覆盖新密码框、已输入内容、只读与禁用控件；复杂 SSO 路由可能需更新登录直达地址或使用字段绑定/主动填写 |
+| A06 修改密码框误填 | 自动填写排除 new-password（含 section token）、非空、只读、禁用、错误类型及多个可见密码框的表单；赋值前再次检查。正常登录重定向不要求入口路径相同，SPA 路由变化结束旧轮询 | 旧 agent 回归覆盖新密码框、已有输入、多密码框表单、只读/禁用和正常子域登录 |
 | A07 备份预检不足 | 在临时加密副本上检查完整性，完成 schema 迁移，并读取账号、适配与绑定；检查失败即清理副本，成功后才锁定和替换当前库。原备份保持原样 | 不完整 accounts 表被拒绝；旧 schema 备份在副本上迁移成功；原备份字节不变；失败不留临时数据库 |
 | A08 并发下载路径错配 | 每个下载按 URL 关联路径，优先使用原生完成路径。缺少原生下载 ID 时，同页签相同 URL 的并发请求明确拒绝，不覆盖已有映射；在途路径也参与文件名避让 | A/B 交错完成、原生路径优先、重复 URL 不覆盖映射有 Rust 回归；原生下载回调仍需实机验收 |
 | A09 切页面丢下载事件 | 后端保留未确认的完成记录；App 根层常驻下载中心，串行处理另存提示，锁定时暂停、解锁后继续。提供本次界面运行期间最近 20 条处理记录 | TypeScript 与生产混淆构建通过；需实机验证系统保存框、锁定期间完成和页面切换组合 |
 | A10 SPA 地址陈旧 | 从原生 WebView 同步当前 URL，查询时不持有会话锁；列表、刷新和切断前同步实际路由。macOS 通过可空原生 URL 查询避免未提交导航的 nil URL 问题；保活也复用此查询 | 两平台编译通过；history/hash 路由与区域恢复的原生组合需实机验收 |
 | A11 网页焦点快捷键 | 增加应用原生菜单 Cmd/Ctrl+K，从原生事件打开切换面板；保留主窗口入口，避免覆盖复制确认和区域告警 | 两平台编译通过；网页输入框、iframe、弹窗焦点需实机验收 |
 
-主要实现：[来源策略](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/origin_policy.rs)、[明确来源列表](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/credential-origins.json)、[会话与窗口](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/session.rs)、[原生活动来源](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/activity.rs)、[下载关联与队列](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/downloads.rs)、[全局下载中心](/Users/macbookpro/Desktop/tan/code/me/switchboard/src/screens/DownloadCenter.tsx)。
+主要实现：[来源策略](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/origin_policy.rs)、[公共后缀规则与维护](/Users/macbookpro/Desktop/tan/code/me/switchboard/docs/PUBLIC-SUFFIX.md)、[会话与窗口](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/session.rs)、[原生活动来源](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/activity.rs)、[下载关联与队列](/Users/macbookpro/Desktop/tan/code/me/switchboard/src-tauri/src/downloads.rs)、[全局下载中心](/Users/macbookpro/Desktop/tan/code/me/switchboard/src/screens/DownloadCenter.tsx)。
 
 ## 兼容性变化
 
-- 自定义站点的兄弟子域、不同端口和 HTTP 降级不再被自动视为可信来源。确实需要其他登录站点时应配置准确的登录直达 URL；扩展 SSO 必须逐个审查和加入明确列表，不能恢复按域名末尾猜测的规则。
+- 同一站点的兄弟子域和不同端口自动兼容，普通登录不需要额外确认或名单配置。公共后缀表隔离多租户托管后缀；HTTPS 降级和 IP/localhost 跨端口保持拦截。
 - 旧版指认完成后只保存配置，下一次打开/刷新或主动填写时才交付凭据。
-- 旧版自动填写要求登录直达页同一路径，并默认不覆盖已有输入。重定向到其他路径时应更新直达 URL，或使用页面条件明确的字段绑定/主动填写。
+- 已撤回初版修复中要求同源、固定名单和入口路径相同的过严限制。正常同站登录跳转可使用不同子域与路径；新密码、已有输入和多密码框表单继续受保护。
 - 同页签同 URL 文件下载必须等待前一个完成；不同 URL 可以并发。未确认下载完成记录保存在后端进程内，可跨前端重载，退出整个 App 后不保留。
 - 自动锁定不再相信网页发送的心跳；Windows 使用系统输入时间与前台窗口联合判断。其他非 macOS/Windows 平台没有新增网页原生输入监听，需要另行适配。
 
@@ -46,10 +46,11 @@
 
 ## 验证
 
-- `pnpm check:agent`：通过；包含跨租户与未授权兄弟来源、真实值投递、伪造活动、新密码/已有输入保护。
-- `pnpm check:bindings`：16 项通过；包含 HTTP 缺少 randomUUID、明确授权的跨源 iframe、原有路径/取消/迟到回执检查。
+- `pnpm check:origins`：78 项官方公共后缀向量及 26 项站点边界用例通过。
+- `pnpm check:agent`：通过；包含跨租户隔离、正常兄弟子域登录、真实值投递、伪造活动、新密码/已有输入及多密码框表单保护。
+- `pnpm check:bindings`：16 项通过；包含 HTTP 缺少 randomUUID、正常同站不同子域 iframe、原有路径/取消/迟到回执检查。
 - `pnpm build:app`：TypeScript、Vite 6.4.5 生产构建、混淆步骤通过。
-- `cargo test --offline --manifest-path src-tauri/Cargo.toml`：84 项通过，1 项联网探针保持忽略。
+- `cargo test --offline --manifest-path src-tauri/Cargo.toml`：86 项通过，1 项联网探针保持忽略。
 - `cargo check --offline --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-gnu`：通过。
 - `git diff --check`：通过。
 
@@ -62,6 +63,6 @@
 3. 在账号页输入框、iframe 和独立弹窗中连续操作，确认空闲计时正常；仅让网页定时发送消息时仍应自动锁定。
 4. 同页 A/B 下载交错完成、重复 URL 下载、切账号库/设置页、下载完成前锁定；确认路径准确、提示串行且解锁后可处理。
 5. SPA 使用 pushState/replaceState/hash 切路由，检查地址显示、复制、普通刷新、区域切断恢复均停留在当前路由。
-6. macOS 与 Windows 分别检查网页焦点下 Cmd/Ctrl+K、原生保存框及授权 SSO 登录；不能用当前编译结果替代这轮验收。
+6. macOS 与 Windows 分别检查网页焦点下 Cmd/Ctrl+K、原生保存框及正常同站 SSO 登录；不能用当前编译结果替代这轮验收。
 
 原报告中独立恢复向导、备份合并、选择器主动告警、更多 TOTP 格式、多设备同步和移动端等能力仍属于后续产品工作。本轮优先完成已知代码缺陷和兼容的依赖安全更新。

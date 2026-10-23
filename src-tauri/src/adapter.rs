@@ -83,8 +83,15 @@ pub fn agent_js() -> &'static str {
       return el && el.tagName === 'INPUT' && !el.disabled && !el.readOnly && !el.value
         && !/(^|\s)new-password(\s|$)/i.test(el.getAttribute('autocomplete') || '');
     }
-    return u !== p && safe(u) && safe(p) && p.type === 'password'
-      && ['text', 'email', 'tel', ''].indexOf(u.type || '') !== -1;
+    if (!(u !== p && safe(u) && safe(p) && p.type === 'password'
+      && ['text', 'email', 'tel', ''].indexOf(u.type || '') !== -1)) return false;
+    // 改密码/注册表单通常还有新密码、确认密码，不能把旧密码填进这种表单。
+    var root = p.form || (p.getRootNode ? p.getRootNode() : document);
+    var passwords = root.querySelectorAll('input[type="password"]'), visiblePasswords = 0;
+    for (var i = 0; i < passwords.length; i++) {
+      if (passwords[i].getClientRects().length && !passwords[i].disabled) visiblePasswords++;
+    }
+    return visiblePasswords <= 1;
   }
   function setVal(el, v, fireChange) {
     if (el.isContentEditable) {

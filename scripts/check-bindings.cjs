@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const AGENT = fs.readFileSync(require('node:path').join(__dirname, '../src-tauri/src/binding-agent.js'), 'utf8');
 const dir = require('node:path').join(__dirname, '../src-tauri/src/');
-const originPolicy = fs.readFileSync(dir + 'origin-policy.js', 'utf8').replace('__SB_ORIGIN_GROUPS__', fs.readFileSync(dir + 'credential-origins.json', 'utf8'));
+const originPolicy = require('./origin-policy.cjs');
 let current, now = 0, serial = 0;
 const timers = new Map();
 const within = (f, fn) => { const old = current; current = f; try { return fn(); } finally { current = old; } };
@@ -81,9 +81,9 @@ test('同源同 selector 的两个 iframe 只填写指定路径，值不广播',
   apply(top, m); assert.equal(code(top), 'filled'); assert.equal(ea.value, ''); assert.equal(eb.value, 'secret');
   assert(!a.received.some(m => 'value' in m));
 });
-test('Shadow → 明确授权的跨源 frame → Shadow 路径指认、保存后可复现', () => {
-  const top = frame('https://signin.aliyun.com/login'), host = node(top, 'host', 'SECTION'); host.shadowRoot = root(host);
-  const child = frame('https://passport.aliyun.com/form', top, 'login', host.shadowRoot);
+test('Shadow → 同站不同子域 frame → Shadow 路径指认、保存后可复现', () => {
+  const top = frame('https://admin.example.com/login'), host = node(top, 'host', 'SECTION'); host.shadowRoot = root(host);
+  const child = frame('https://login.example.com/form', top, 'login', host.shadowRoot);
   const inner = node(child, 'inner', 'SECTION'); inner.shadowRoot = root(inner);
   const input = node(child, 'tenant', 'INPUT', inner.shadowRoot);
   command(top, { op: 'pick', document: doc(top), pickId: 'pick' }); tick(10); click(child, input); tick(20);

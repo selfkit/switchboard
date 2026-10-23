@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "build:app": "tsc && vite build && node scripts/obfuscate.mjs",
     "check:agent": "node scripts/check-agent.cjs",
-    "check:bindings": "node scripts/check-bindings.cjs"
+    "check:bindings": "node scripts/check-bindings.cjs",
+    "check:origins": "node scripts/check-origins.cjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

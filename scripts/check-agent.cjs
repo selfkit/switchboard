@@ -11,8 +11,7 @@ const rs = fs.readFileSync(path.join(__dirname, "../src-tauri/src/adapter.rs"), 
 const start = rs.indexOf("pub fn agent_js()");
 const AGENT = rs.slice(rs.indexOf("r#\"", start) + 3, rs.indexOf("\"#", start));
 
-const originPolicy = fs.readFileSync(path.join(__dirname, '../src-tauri/src/origin-policy.js'), 'utf8')
-  .replace('__SB_ORIGIN_GROUPS__', fs.readFileSync(path.join(__dirname, '../src-tauri/src/credential-origins.json'), 'utf8'));
+const originPolicy = require('./origin-policy.cjs');
 
 let current = null;
 const runIn = (f, fn) => { const p = current; current = f; try { return fn(); } finally { current = p; } };
@@ -49,7 +48,7 @@ function makeFrame(name, origin, parent) {
   w.__TAURI_INTERNALS__ = { invoke: (cmd) => { f.invokes.push(cmd); return Promise.resolve(); } };
   w.document = {
     addEventListener: (t, fn) => { (f.docL[t] ||= []).push(fn); },
-    querySelectorAll: (sel) => f.fields.filter((x) => sel === "*" || sel === "#" + x.id),
+    querySelectorAll: (sel) => f.fields.filter((x) => sel === "*" || sel === "#" + x.id || (sel === 'input[type="password"]' && x.type === "password")),
     body: { appendChild: (d) => f.toasts.push(d.textContent) },
     createElement: () => ({ style: {}, remove() {}, textContent: "" }),
   };
@@ -122,7 +121,7 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
   {
     const top = makeFrame("top", "https://www.example.com", null);
     const search = field(top, "search");
-    const login = makeFrame("login", "https://www.example.com", top);
+    const login = makeFrame("login", "https://login.example.com", top);
     const pw = field(login, "pw");
     userClick(top, search);
     await sleep(20);
@@ -187,7 +186,7 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
   {
     const top = makeFrame("top", "https://www.example.com", null);
     const q = field(top, "q");
-    const login = makeFrame("login", "https://www.example.com", top);
+    const login = makeFrame("login", "https://login.example.com", top);
     const pw = field(login, "pw");
     userClick(login, pw);
     await sleep(20);
@@ -200,9 +199,9 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
   // Tenant-controlled sibling origins cannot receive credentials, even on a shared suffix.
   for (const [origin, hostileOrigin] of [
     ['https://customer-a.github.io', 'https://customer-b.github.io'],
-    ['https://login.example.com', 'https://unreviewed.example.com'],
-    ['https://signin.aliyun.com', 'https://unreviewed.aliyun.com'],
-    ['https://signin.aliyun.com', 'https://passport.aliyun.com:8443'],
+    ['https://signin.aliyun.com', 'http://passport.aliyun.com'],
+    ['https://customer-a.appspot.com', 'https://customer-b.appspot.com'],
+    ['https://a.example.co.uk', 'https://b.other.co.uk'],
   ]) {
     const top = makeFrame('top', origin, null), evil = makeFrame('evil', hostileOrigin, top);
     hostile(evil);
@@ -211,11 +210,12 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     await sleep(700);
     check('origin isolation: ' + hostileOrigin, !stole(evil) && p._value === 'dummy-password');
   }
-  for (const scenario of ['new-password', 'section-new-password', 'nonempty', 'readonly', 'disabled']) {
+  for (const scenario of ['new-password', 'section-new-password', 'change-password-form', 'nonempty', 'readonly', 'disabled']) {
     const top = makeFrame('top', 'https://login.example.com', null);
     const u = field(top, 'u'), p = field(top, 'p');
     if (scenario === 'new-password') p.autocomplete = 'new-password';
     if (scenario === 'section-new-password') p.autocomplete = 'section-profile new-password';
+    if (scenario === 'change-password-form') { const next = field(top, 'new-password'); next.type = 'password'; }
     if (scenario === 'nonempty') p._value = 'user-typed';
     if (scenario === 'readonly') p.readOnly = true;
     if (scenario === 'disabled') p.disabled = true;
@@ -224,6 +224,21 @@ const check = (name, ok) => results.push([ok ? "PASS" : "FAIL", name]);
     await sleep(700);
     check('automatic fill protects ' + scenario, p._value === before && u._value === '');
     runIn(top, () => top.window.__sb.stopAutofill());
+  }
+
+  // A normal custom login service in another subdomain requires no setup or vendor allowlist.
+  for (const [entry, login] of [
+    ['https://admin.example.com', 'https://login.example.com'],
+    ['https://admin.company.com.cn', 'https://login.company.com.cn'],
+    ['https://admin.example.co.uk', 'https://login.example.co.uk'],
+    ['https://admin.example.com:8443', 'https://login.example.com:9443'],
+    ['https://admin.customer-a.github.io', 'https://login.customer-a.github.io'],
+  ]) {
+    const top = makeFrame('entry', entry, null), child = makeFrame('login', login, top);
+    const u = field(child, 'u'), p = field(child, 'p');
+    runIn(top, () => top.window.__sb.autofill('#u', '#p', 'alice', 'dummy-password', true));
+    await sleep(700);
+    check('normal subdomain login: ' + login, u._value === 'alice' && p._value === 'dummy-password');
   }
 
   // P: 空白页探测（page_probe_js）。虚拟时钟，render(t) 给出第 t 毫秒时页面上有什么
