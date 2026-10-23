@@ -36,11 +36,8 @@
       ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
       ::-webkit-scrollbar-thumb { background: var(--sb-scroll); border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: var(--sb-scroll-hover); }
-      /* 侧栏：滚动条平时藏起来，鼠标移上来才出现。两套写法都要：WKWebView 只认 -webkit-，WebView2 认 scrollbar-color */
-      .sb-scroll { scrollbar-color: transparent transparent; }
-      .sb-scroll:hover { scrollbar-color: var(--sb-scroll) transparent; }
-      .sb-scroll::-webkit-scrollbar-thumb { background: transparent; }
-      .sb-scroll:hover::-webkit-scrollbar-thumb { background: var(--sb-scroll); }
+      /* 侧栏内容保持自然高度，让滚动容器承接溢出，避免小窗口压缩后截断。 */
+      .sb-scroll > * { flex-shrink: 0; }
     </style>
   </head>
   <body>

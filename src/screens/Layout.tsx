@@ -296,6 +296,8 @@ export function Sidebar({ children, footer }: { children?: ReactNode; footer?: R
     <div
       style={{
         width: SIDEBAR_W,
+        minHeight: 0,
+        overflowY: "auto",
         flexShrink: 0,
         boxSizing: "border-box",
         padding: "20px 16px 16px",
@@ -305,8 +307,8 @@ export function Sidebar({ children, footer }: { children?: ReactNode; footer?: R
         flexDirection: "column",
       }}
     >
-      {/* sb-scroll：滚动条只在鼠标移上来时出现（index.html），平时贴着分隔线的那道灰条会把线加粗一倍 */}
-      <div className="sb-scroll" style={{ flexGrow: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* 子项保持自然高度，小窗口通过这里滚动查看完整内容。 */}
+      <div className="sb-scroll" style={{ flex: "1 1 0", minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 18 }}>
         {children}
       </div>
       {footer}
