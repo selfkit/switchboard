@@ -12,8 +12,8 @@ import SessionsPage from "./screens/SessionsPage";
 import DownloadCenter from "./screens/DownloadCenter";
 import { CopyGate, QuickSwitch, TotpCode } from "./screens/Overlays";
 import { RegionAlarm, RegionBlocked } from "./screens/RegionGuard";
-import { AppShell, type Page, type SubPageShell } from "./screens/Layout";
-import { C, ErrorLine, MOD, copySecret } from "./ui";
+import { AppShell, TOPBAR_H, type Page, type SubPageShell } from "./screens/Layout";
+import { MOD, Skeleton, Toast, copySecret } from "./ui";
 
 type Screen =
   | { name: "loading" }
@@ -511,23 +511,20 @@ export default function App() {
         <QuickSwitch accounts={accounts} sessions={sessions} onClose={() => setOverlay({ name: "none" })} onPick={launch} />
       )}
       {err && (
-        <div
+        <Toast
+          tone="error"
+          onClose={() => setErr("")}
           style={{
-            position: "fixed",
-            left: 24,
-            bottom: 24,
-            background: C.surface,
-            border: `1px solid ${C.danger}`,
-            borderRadius: 8,
-            padding: "10px 14px",
-            maxWidth: 420,
+            // 会话页右侧从 52+34 开始是原生 webview，toast 放到顶栏里才不会下半截被盖住
+            top: screen.name === "sessions" ? 8 : TOPBAR_H + 8,
+            left: 16,
+            right: 16,
+            width: "fit-content",
+            margin: "0 auto",
           }}
         >
-          <ErrorLine text={err} />
-          <span onClick={() => setErr("")} style={{ fontSize: 11, color: C.muted, cursor: "pointer" }}>
-            关闭
-          </span>
-        </div>
+          {err}
+        </Toast>
       )}
     </>
   );
@@ -537,7 +534,16 @@ export default function App() {
   const page = () => {
     switch (screen.name) {
       case "loading":
-        return <div style={{ padding: 32, color: C.muted }}>加载中…</div>;
+        return (
+          <div style={{ flexGrow: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 32 }}>
+            <div aria-label="正在加载" role="status" style={{ width: 420, maxWidth: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
+              <Skeleton width={180} height={22} />
+              <Skeleton height={40} />
+              <Skeleton height={40} />
+              <Skeleton width="65%" height={14} />
+            </div>
+          </div>
+        );
 
       case "register":
         return <Register onDone={enterMain} onDemo={enterDemo} onTour={runTour} />;

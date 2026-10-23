@@ -6,7 +6,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { RELEASE_PAGE } from "./DownloadGate";
 import { RegionSettings } from "./RegionGuard";
 import * as api from "../api";
-import { Button, C, Card, ErrorLine, Field, inputStyle } from "../ui";
+import { Button, C, Card, Dialog, ErrorLine, Field, inputStyle } from "../ui";
 import { NavItem, SideGroup, SubPage, type SubPageShell } from "./Layout";
 
 type SettingsTab = "region" | "update" | "download" | "backup" | "password";
@@ -17,6 +17,7 @@ const settingsTabs: { id: SettingsTab; label: string }[] = [
   { id: "backup", label: "备份恢复" },
   { id: "password", label: "主密码" },
 ];
+const SETTINGS_TAB_KEY = "sb.settings.tab";
 
 /** 下载存到哪：默认系统「下载」目录，可以换个文件夹，也可以每次下载完都问 */
 function DownloadSettings() {
@@ -51,7 +52,7 @@ function DownloadSettings() {
       </div>
       {s && (
         <>
-          <div style={{ background: C.bg, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}>
+          <div style={{ background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "10px 12px", fontSize: 12, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}>
             {s.dir}
             {!s.custom && !s.demo && <span style={{ color: C.muted, fontFamily: "inherit" }}>（系统「下载」目录）</span>}
           </div>
@@ -85,7 +86,14 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
   /** 改完立刻反映到 App 里正跑着的计时器，不用重新登录才生效 */
   onAutoLockChanged: (secs: number) => void;
 }) {
-  const [tab, setTab] = useState<SettingsTab>("region");
+  const [tab, setTab] = useState<SettingsTab>(() => {
+    // 记住上次看的分区：多数人进设置是为同一件事，不必每次从「网络检测」重新找
+    const saved = localStorage.getItem(SETTINGS_TAB_KEY);
+    return settingsTabs.some((t) => t.id === saved) ? (saved as SettingsTab) : "region";
+  });
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_TAB_KEY, tab);
+  }, [tab]);
   const rootRef = useRef<HTMLDivElement>(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -287,7 +295,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
         </div>
         {upd.state === "none" && <div style={{ fontSize: 12, color: C.muted }}>已经是最新版本</div>}
         {upd.state === "found" && upd.notes && (
-          <div style={{ fontSize: 12, color: C.sub, background: C.bg, borderRadius: 8, padding: "10px 12px", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
+          <div style={{ fontSize: 12, color: C.sub, background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "10px 12px", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
             {upd.notes}
           </div>
         )}
@@ -300,7 +308,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
           保活刷新、区域检测、页面打不开、界面重载这些事件会写进这个文件，方便排查「第二天会话没了」这类问题。
           <b>不含</b>密码、cookie 或完整的带 token 地址。
         </div>
-        <div style={{ background: C.bg, borderRadius: 8, padding: "10px 12px", fontSize: 11, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}>
+        <div style={{ background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "10px 12px", fontSize: 11, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}>
           {logFile || "（日志还没初始化）"}
         </div>
         <div>
@@ -384,7 +392,7 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
                 onClick={() => void pickAutoLock(secs)}
                 style={{
                   padding: "6px 10px",
-                  borderRadius: 6,
+                  borderRadius: "var(--sb-radius-sm)",
                   border: `1px solid ${selected ? C.brand : C.border}`,
                   background: selected ? C.brandSoft : C.surface,
                   color: selected ? C.brand : C.sub,
@@ -421,17 +429,11 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
       {msg && <div style={{ fontSize: 13, color: C.brand, lineHeight: 1.7 }}>{msg}</div>}
 
       {importing && (
-        <div
-          onClick={() => setImporting(null)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 460, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
-          >
+        <Dialog label="从备份导入" width={460} onClose={() => setImporting(null)} style={{ padding: 28 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ fontSize: 18, color: C.text }}>从备份导入</div>
             <div
-              style={{ background: C.bg, borderRadius: 8, padding: "10px 12px", fontSize: 11, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}
+              style={{ background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "10px 12px", fontSize: 11, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}
             >
               {importing.path}
             </div>
@@ -460,25 +462,24 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
             </div>
             <ErrorLine text={err} />
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <Button onClick={() => setImporting(null)}>取消</Button>
-              <Button kind="primary" onClick={doImport} disabled={!importing.password || !importing.current}>
+              <Button size="md" onClick={() => setImporting(null)}>取消</Button>
+              <Button size="md" kind="primary" onClick={doImport} disabled={!importing.password || !importing.current}>
                 确认导入
               </Button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {wiping && (
-        <div
-          onClick={() => { setWiping(false); setWipePwd(""); }}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
+        <Dialog
+          label="清空所有账户数据"
+          width={420}
+          onClose={() => { setWiping(false); setWipePwd(""); }}
+          style={{ padding: 28 }}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 420, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
-          >
-            <div style={{ fontSize: 18, color: C.danger }}>确认清空所有账户数据？</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ fontSize: 18, color: C.danger, fontWeight: 500 }}>确认清空所有账户数据？</div>
             <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
               这会作废本机当前的账号库，所有账号、密码、TOTP 都将无法通过 App 访问。此操作不可撤销，请先确认已经备份。
               跟改主密码一个门槛，输入当前主密码以继续：
@@ -494,27 +495,21 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
             />
             <ErrorLine text={err} />
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <Button onClick={() => { setWiping(false); setWipePwd(""); }}>取消</Button>
-              <Button kind="danger" onClick={doWipe} disabled={!wipePwd}>
+              <Button size="md" onClick={() => { setWiping(false); setWipePwd(""); }}>取消</Button>
+              <Button size="md" kind="danger" onClick={doWipe} disabled={!wipePwd}>
                 确认清空
               </Button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {exported && (
-        <div
-          onClick={() => setExported("")}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 420, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 16 }}
-          >
+        <Dialog label="备份已导出" width={420} onClose={() => setExported("")} style={{ padding: 28 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ fontSize: 18, color: C.text }}>备份已导出</div>
             <div
-              style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", fontSize: 12, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}
+              style={{ background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "12px 14px", fontSize: 12, color: C.sub, wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}
             >
               {exported}
             </div>
@@ -522,12 +517,12 @@ export default function Settings({ shell, onLocked, onWiped, onRegionChanged, on
               这份备份文件只能用当前的主密码解密。改了主密码之后，记得重新导出一份新的
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button kind="primary" onClick={() => setExported("")}>
+              <Button size="md" kind="primary" onClick={() => setExported("")}>
                 完成
               </Button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
     </SubPage>

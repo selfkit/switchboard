@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import * as api from "../api";
 import type { RegionEndpoint, RegionMode, Verdict } from "../api";
-import { Button, C, Card, ErrorLine, inputStyle } from "../ui";
+import { Button, C, Card, Dialog, ErrorLine, inputStyle } from "../ui";
 
 /** 出口状态的配色：大陆=绿、境外=红、未知=灰 */
 function tone(v: Verdict) {
@@ -26,14 +26,14 @@ export function RegionBadge({ state, onClick, busy }: { state: api.RegionState |
         alignItems: "center",
         gap: 5,
         padding: "5px 9px",
-        borderRadius: 7,
+        borderRadius: "var(--sb-radius-sm)",
         fontSize: 11,
         whiteSpace: "nowrap",
         flexShrink: 0,
         border: `1px solid ${C.border}`,
         cursor: busy ? "default" : "pointer",
         color: mainlandWithTunnel ? C.warn : t?.color ?? C.sub,
-        background: v?.origin.kind === "outside" ? "rgba(227,77,89,0.08)" : mainlandWithTunnel ? "rgba(179,107,0,0.08)" : C.surface,
+        background: v?.origin.kind === "outside" ? C.dangerSoft : mainlandWithTunnel ? C.warnSoft : C.surface,
       }}
     >
       <span>{state?.mode === "off" && v?.origin.kind === "unknown" ? "🌐" : t?.flag ?? "🌐"}</span>
@@ -69,17 +69,11 @@ export function RegionBlocked({
   const heading = splitTunnel ? "检测到分流代理 / VPN" : "检测到境外网络";
   const [rechecking, setRechecking] = useState(false);
   return (
-    <div
-      onClick={onCancel}
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 30 }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: 460, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
-      >
+    <Dialog label={heading} width={460} onClose={onCancel} style={{ padding: 28 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ fontSize: 18, color: C.text }}>{heading}{strict && "，已拦截"}</div>
 
-        <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: C.sub }}>
+        <div style={{ background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: C.sub }}>
           <div>
             探测出口：<b style={{ color: splitTunnel ? C.warn : C.danger }}>{api.regionLabel(verdict)}</b>
             {verdict.ip && <span style={{ color: C.muted }}>（{verdict.ip}）</span>}
@@ -100,10 +94,11 @@ export function RegionBlocked({
         </div>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
-          <span onClick={onSettings} style={{ fontSize: 12, color: C.muted, cursor: "pointer" }}>
+          <button type="button" onClick={onSettings} className="sb-link" style={{ fontSize: 12, color: C.muted }}>
             去设置
-          </span>
-          <span
+          </button>
+          <button
+            type="button"
             onClick={async () => {
               // 关掉 VPN 后要能立刻重试——结论缓存 10 分钟，不给这个按钮
               // 用户就得干等或者绕去设置页
@@ -111,30 +106,32 @@ export function RegionBlocked({
               await onRecheck();
               setRechecking(false);
             }}
-            style={{ fontSize: 12, color: C.brand, cursor: "pointer", marginRight: "auto" }}
+            disabled={rechecking}
+            className="sb-link"
+            style={{ fontSize: 12, marginRight: "auto" }}
           >
             {rechecking ? "检测中…" : "关了代理？重新检测"}
-          </span>
+          </button>
           {strict ? (
             <>
-              <span onClick={onContinue} style={{ fontSize: 12, color: C.muted, cursor: "pointer" }}>
+              <button type="button" onClick={onContinue} className="sb-link" style={{ fontSize: 12, color: C.muted }}>
                 仍要继续（30 分钟内不断开）
-              </span>
-              <Button kind="primary" onClick={onCancel}>
+              </button>
+              <Button size="md" kind="primary" onClick={onCancel}>
                 取消
               </Button>
             </>
           ) : (
             <>
-              <Button onClick={onCancel}>取消</Button>
-              <Button kind="primary" onClick={onContinue}>
+              <Button size="md" onClick={onCancel}>取消</Button>
+              <Button size="md" kind="primary" onClick={onContinue}>
                 继续打开
               </Button>
             </>
           )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -166,13 +163,13 @@ export function RegionAlarm({
   const splitTunnel = verdict.origin.kind === "mainland" && verdict.tunnel;
   const heading = splitTunnel ? "检测到分流代理 / VPN" : "网络变成境外";
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 }}>
-      <div style={{ width: 470, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}>
+    <Dialog label={heading} width={470} dismissible={false} onClose={() => {}} style={{ padding: 28 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ fontSize: 18, color: C.text }}>
           {heading}{cut && "，已断开账号页面"}
         </div>
 
-        <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", fontSize: 12, color: C.sub, lineHeight: 1.8 }}>
+        <div style={{ background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "12px 14px", fontSize: 12, color: C.sub, lineHeight: 1.8 }}>
           探测出口：<b style={{ color: splitTunnel ? C.warn : C.danger }}>{api.regionLabel(verdict)}</b>
           {verdict.ip && <span style={{ color: C.muted }}>（{verdict.ip}）</span>}
           <br />
@@ -189,17 +186,19 @@ export function RegionAlarm({
         </div>
 
         {failed && (
-          <div style={{ fontSize: 12, color: C.danger }}>网络仍不符合放行条件。请检查代理 / VPN 后重试。</div>
+          <div role="alert" style={{ fontSize: 12, color: C.danger }}>网络仍不符合放行条件。请检查代理 / VPN 后重试。</div>
         )}
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
-          <span onClick={onSettings} style={{ fontSize: 12, color: C.muted, cursor: "pointer", marginRight: "auto" }}>
+          <button type="button" onClick={onSettings} className="sb-link" style={{ fontSize: 12, color: C.muted, marginRight: "auto" }}>
             去设置
-          </span>
+          </button>
           {cut ? (
             <Button
+              size="md"
               kind="primary"
               disabled={busy}
+              loading={busy}
               onClick={async () => {
                 setBusy(true);
                 setFailed(!(await onRecheck()));
@@ -210,17 +209,17 @@ export function RegionAlarm({
             </Button>
           ) : (
             <>
-              <span onClick={onIgnore} style={{ fontSize: 12, color: C.muted, cursor: "pointer" }}>
+              <button type="button" onClick={onIgnore} className="sb-link" style={{ fontSize: 12, color: C.muted }}>
                 继续用着
-              </span>
-              <Button kind="primary" onClick={onCut}>
+              </button>
+              <Button size="md" kind="primary" onClick={onCut}>
                 断开账号页面
               </Button>
             </>
           )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -289,7 +288,7 @@ export function RegionSettings({ onChanged }: { onChanged?: (s: api.RegionState)
   const option = (mode: RegionMode, title: string) => (
     <label
       key={mode}
-      style={{ display: "flex", gap: 7, alignItems: "center", justifyContent: "center", cursor: "pointer", padding: "8px 10px", border: `1px solid ${state?.mode === mode ? C.brand : C.border}`, borderRadius: 7, background: state?.mode === mode ? C.brandSoft : C.surface, color: state?.mode === mode ? C.brand : C.sub, fontSize: 12, fontWeight: state?.mode === mode ? 600 : 400, flex: "1 1 140px", whiteSpace: "nowrap" }}
+      style={{ display: "flex", gap: 7, alignItems: "center", justifyContent: "center", cursor: "pointer", padding: "8px 10px", border: `1px solid ${state?.mode === mode ? C.brand : C.border}`, borderRadius: "var(--sb-radius-sm)", background: state?.mode === mode ? C.brandSoft : C.surface, color: state?.mode === mode ? C.brand : C.sub, fontSize: 12, fontWeight: state?.mode === mode ? 600 : 400, flex: "1 1 140px", whiteSpace: "nowrap" }}
     >
       <input
         type="radio"
@@ -344,7 +343,7 @@ export function RegionSettings({ onChanged }: { onChanged?: (s: api.RegionState)
                 onClick={() => void pickInterval(secs)}
                 style={{
                   padding: "6px 10px",
-                  borderRadius: 6,
+                  borderRadius: "var(--sb-radius-sm)",
                   border: `1px solid ${selected ? C.brand : C.border}`,
                   background: selected ? C.brandSoft : C.surface,
                   color: selected ? C.brand : C.sub,
@@ -361,13 +360,13 @@ export function RegionSettings({ onChanged }: { onChanged?: (s: api.RegionState)
       </div>
 
       {state?.mode !== "off" && (
-        <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+        <div style={{ background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 13, color: busy ? C.muted : v?.origin.kind === "mainland" && v.tunnel ? C.warn : t?.color ?? C.muted }}>
               {busy ? "正在检测当前出口…" : <>{t?.flag} 探测出口：{v ? api.regionLabel(v) : "尚未检测"}</>}
               {!busy && v?.ip && <span style={{ color: C.muted, fontSize: 12 }}>（{v.ip}）</span>}
             </span>
-            <Button onClick={() => load(true)} disabled={busy} style={{ padding: "4px 10px", fontSize: 12, marginLeft: "auto" }}>
+            <Button size="sm" onClick={() => load(true)} disabled={busy} style={{ marginLeft: "auto" }}>
               {busy ? "检测中…" : "重新检测"}
             </Button>
           </div>
@@ -393,12 +392,14 @@ export function RegionSettings({ onChanged }: { onChanged?: (s: api.RegionState)
 
       {state && state.mode !== "off" && (
         <div style={{ marginTop: 2 }}>
-          <span
+          <button
+            type="button"
             onClick={() => setEditing(editing === null ? JSON.stringify(state.endpoints, null, 2) : null)}
-            style={{ fontSize: 12, color: C.brand, cursor: "pointer" }}
+            className="sb-link"
+            style={{ fontSize: 12 }}
           >
             {editing === null ? "探测端点设置" : "收起"}
-          </span>
+          </button>
         </div>
       )}
 

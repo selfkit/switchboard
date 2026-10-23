@@ -46,7 +46,7 @@ export default function BindingPanel({ account, tabLabel, ready }: { account: ap
     try { await fn(); await refresh(); } catch (e) { setErr(String(e)); } finally { setBusy(false); }
   };
   const button = (label: string, fn: () => Promise<unknown>, disabled = false) => (
-    <button type="button" disabled={busy || disabled} onClick={() => void action(fn)} style={{ border: `1px solid ${C.border}`, borderRadius: 5, background: C.surface, color: C.text, fontSize: 11, padding: "5px 7px", cursor: "pointer", opacity: busy || disabled ? 0.5 : 1 }}>{label}</button>
+    <button type="button" disabled={busy || disabled} onClick={() => void action(fn)} style={{ border: `1px solid ${C.border}`, borderRadius: "var(--sb-radius-sm)", background: C.surface, color: C.text, fontSize: 12, padding: "5px 7px", cursor: "pointer", opacity: busy || disabled ? 0.5 : 1 }}>{label}</button>
   );
   const running = state?.run?.status === "running";
   const choose = (value: string) => {
@@ -61,7 +61,7 @@ export default function BindingPanel({ account, tabLabel, ready }: { account: ap
     setNotice(fill ? "绑定已保存，正在试填；请查看下方填写结果。" : "绑定已保存。可点击「填写」验证；分步登录请进入下一步后继续绑定密码框。");
     if (fill) await api.runFieldBindings(account.id, tabLabel, id, overwrite);
   };
-  return <details open style={{ fontSize: 11, color: C.sub, border: `1px solid ${C.border}`, borderRadius: 6, padding: "7px 6px", lineHeight: 1.6 }}>
+  return <details open style={{ fontSize: 12, color: C.sub, border: `1px solid ${C.border}`, borderRadius: "var(--sb-radius-sm)", padding: "7px 6px", lineHeight: 1.6 }}>
     <summary style={{ cursor: "pointer", color: C.text }}>输入框绑定{state?.bindings.length ? ` · ${state.bindings.length}` : ""}</summary>
     <div style={{ display: "flex", flexDirection: "column", gap: 7, paddingTop: 7 }}>
       <span>选择网页输入框，再关联左侧字段。绑定仅用于此账号和指定页面；暂不支持跨站内嵌页面。</span>
@@ -78,11 +78,11 @@ export default function BindingPanel({ account, tabLabel, ready }: { account: ap
       {(state?.draft || editing) && <div style={{ display: "flex", flexDirection: "column", gap: 6, borderLeft: `2px solid ${C.brand}`, paddingLeft: 7 }}>
         <strong>{state?.draft ? "已选中输入框" : "编辑绑定"}</strong>
         <span style={{ overflowWrap: "anywhere", color: C.muted }}>{(state?.draft?.target || editing?.target)?.locator.value}</span>
-        <label>值来源<select aria-label="绑定值来源" value={source} onChange={e => choose(e.target.value)} style={{ width: "100%", fontSize: 11, padding: 4 }}>
+        <label>值来源<select aria-label="绑定值来源" value={source} onChange={e => choose(e.target.value)} style={{ width: "100%", fontSize: 12, padding: 4 }}>
           {!sources.some(s => s.key === source) && <option value={source}>来源字段已删除，请重新选择</option>}
           {sources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select></label>
-        <label>名称<input aria-label="绑定名称" value={name} maxLength={100} onChange={e => setName(e.target.value)} style={{ width: "100%", boxSizing: "border-box", fontSize: 11, padding: 4 }} /></label>
+        <label>名称<input aria-label="绑定名称" value={name} maxLength={100} onChange={e => setName(e.target.value)} style={{ width: "100%", boxSizing: "border-box", fontSize: 12, padding: 4 }} /></label>
         <label><input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> 打开匹配页面时自动填写</label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{button("保存", () => save(false), !name.trim() || !ready || !sources.some(s => s.key === source))}{button("保存并试填", () => save(true), !name.trim() || !ready || !sources.some(s => s.key === source))}</div>
       </div>}

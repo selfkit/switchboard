@@ -42,7 +42,7 @@ export default function DownloadCenter({ unlocked }: { unlocked: boolean }) {
   if (!unlocked || recent.length === 0) return null;
   const shown = expanded ? recent : recent.slice(0, 1);
   return (
-    <aside aria-label="下载记录" style={{ position: "fixed", left: 8, bottom: 72, width: 208, maxHeight: "50vh", overflowY: "auto", zIndex: 1000, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 8, boxSizing: "border-box", fontSize: 11 }}>
+    <aside aria-label="下载记录" style={{ position: "fixed", left: 8, bottom: 72, width: 208, maxHeight: "50vh", overflowY: "auto", zIndex: 50, background: C.surface, border: `1px solid ${C.border}`, borderRadius: "var(--sb-radius-md)", padding: 8, boxSizing: "border-box", fontSize: 12 }}>
       <button onClick={() => setExpanded(v => !v)} style={{ color: C.brand, cursor: "pointer" }}>下载记录（{recent.length}）{expanded ? "收起" : "展开"}</button>
       {shown.map(d => <div key={d.id} style={{ marginTop: 6 }}>
         <button title={d.path} disabled={!!d.error && !d.path} onClick={() => { void api.revealDownload(d.path).catch(e => setRecent(items => items.map(x => x.id === d.id ? { ...x, error: String(e) } : x))); }} style={{ color: C.brand, cursor: "pointer", wordBreak: "break-all" }}>{d.name || "文件"} · 在{FILE_MANAGER}中显示</button>

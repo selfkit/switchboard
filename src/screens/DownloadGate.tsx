@@ -14,7 +14,7 @@ export default function DownloadGate() {
     width: 460,
     background: C.surface,
     border: `1px solid ${C.border}`,
-    borderRadius: 14,
+    borderRadius: "var(--sb-radius-xl)",
     padding: 32,
     display: "flex",
     flexDirection: "column",
@@ -35,16 +35,8 @@ export default function DownloadGate() {
           href={RELEASE_PAGE}
           target="_blank"
           rel="noreferrer"
-          style={{
-            marginTop: 4,
-            padding: "12px 28px",
-            borderRadius: 8,
-            background: C.brand,
-            color: C.onBrand,
-            fontSize: 15,
-            fontWeight: 500,
-            textDecoration: "none",
-          }}
+          className="sb-btn sb-btn-lg sb-btn-primary"
+          style={{ marginTop: 4, textDecoration: "none" }}
         >
           前往下载
         </a>

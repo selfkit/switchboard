@@ -34,23 +34,11 @@ const bigInput: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
   padding: "12px 14px",
-  borderRadius: 8,
+  borderRadius: "var(--sb-radius-md)",
   border: `1px solid ${C.borderStrong}`,
   background: C.surface,
   fontSize: 15,
   color: C.text,
-};
-
-const bigButton: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "12px 14px",
-  borderRadius: 8,
-  border: "none",
-  background: C.brand,
-  color: C.onBrand,
-  fontSize: 15,
-  fontWeight: 500,
 };
 
 function Labeled({ label, children }: { label: string; children: ReactNode }) {
@@ -71,12 +59,12 @@ function DemoEntry({ onDemo, onTour }: DemoProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center" }}>
       <div style={{ display: "flex", gap: 16 }}>
-        <span onClick={onDemo} title="假账号 + 本机模拟的登录页，不连外网；锁定即退出演示" style={link}>
+        <button type="button" onClick={onDemo} title="假账号 + 本机模拟的登录页，不连外网；锁定即退出演示" className="sb-link" style={link}>
           进入演示模式
-        </span>
-        <span onClick={() => onTour(record)} title="从全新的假账号库开始，自动把主要功能走一遍，约 30 秒" style={link}>
+        </button>
+        <button type="button" onClick={() => onTour(record)} title="从全新的假账号库开始，自动把主要功能走一遍，约 30 秒" className="sb-link" style={link}>
           ▶ 一键自动演示
-        </span>
+        </button>
       </div>
       {/* 录屏用的是 macOS 自带的 screencapture，别的系统不显示这个选项 */}
       {IS_MAC && (
@@ -139,9 +127,9 @@ export function Register({ onDone, onDemo, onTour }: { onDone: () => void } & De
         />
       </Labeled>
       <ErrorLine text={err} />
-      <button style={bigButton} onClick={submit}>
+      <Button size="lg" kind="primary" onClick={submit} style={{ width: "100%" }}>
         创建账号并开始使用
-      </button>
+      </Button>
     </Shell>
   );
 }
@@ -188,16 +176,16 @@ export function Unlock({ onDone, onDemo, onTour, reason }: { onDone: () => void;
       foot={
         <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center", width: "100%" }}>
           <div style={{ fontSize: 12, color: C.muted }}>整库由主密码加密，密钥从不上传</div>
-          <span onClick={showReset} style={{ fontSize: 12, color: C.brand, cursor: "pointer" }}>
+          <button type="button" onClick={showReset} className="sb-link" style={{ fontSize: 12 }}>
             忘记主密码？
-          </span>
+          </button>
           {hint && <ResetPanel hint={hint} />}
           <DemoEntry onDemo={onDemo} onTour={onTour} />
         </div>
       }
     >
       {reason && (
-        <div style={{ padding: "10px 14px", borderRadius: 8, background: C.brandSoft, color: C.brand, fontSize: 12, lineHeight: 1.6 }}>
+        <div style={{ padding: "10px 14px", borderRadius: "var(--sb-radius-md)", background: C.brandSoft, color: C.brand, fontSize: 12, lineHeight: 1.6 }}>
           {reason}
         </div>
       )}
@@ -210,14 +198,14 @@ export function Unlock({ onDone, onDemo, onTour, reason }: { onDone: () => void;
             padding: "10px 14px",
             background: C.surface,
             border: `1px solid ${C.border}`,
-            borderRadius: 8,
+            borderRadius: "var(--sb-radius-md)",
           }}
         >
           <div
             style={{
               width: 28,
               height: 28,
-              borderRadius: 999,
+              borderRadius: "var(--sb-radius-pill)",
               background: C.brandSoft,
               color: C.brand,
               fontSize: 13,
@@ -234,9 +222,9 @@ export function Unlock({ onDone, onDemo, onTour, reason }: { onDone: () => void;
             <span style={{ fontSize: 11, color: C.muted }}>当前账号</span>
             <span style={{ fontSize: 13, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{owner}</span>
           </div>
-          <span onClick={showReset} style={{ fontSize: 12, color: C.brand, cursor: "pointer", flexShrink: 0 }}>
+          <button type="button" onClick={showReset} className="sb-link" style={{ fontSize: 12, flexShrink: 0 }}>
             不是你？
-          </span>
+          </button>
         </div>
       )}
 
@@ -252,7 +240,7 @@ export function Unlock({ onDone, onDemo, onTour, reason }: { onDone: () => void;
         />
       </Labeled>
       {blocked && (
-        <div style={{ padding: "12px 14px", borderRadius: 8, background: "rgba(227,77,89,0.08)", color: C.danger, fontSize: 12, lineHeight: 1.7 }}>
+        <div style={{ padding: "12px 14px", borderRadius: "var(--sb-radius-md)", background: C.dangerSoft, color: C.danger, fontSize: 12, lineHeight: 1.7 }}>
           <b>
             {blocked.verdict.origin.kind === "mainland" ? "检测到分流代理 / VPN" : "检测到境外网络"}
             {blocked.mode === "block" && "，已拦截解锁"}
@@ -260,24 +248,27 @@ export function Unlock({ onDone, onDemo, onTour, reason }: { onDone: () => void;
           <div>探测出口：{api.regionLabel(blocked.verdict)}{blocked.verdict.ip && `（${blocked.verdict.ip}）`}</div>
           <div>请关闭代理 / VPN，或切换到未检测到分流隧道的中国大陆网络后重新检测。</div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
-            <button type="button" onClick={() => submit()} disabled={busy} style={{ padding: "5px 10px", cursor: busy ? "default" : "pointer" }}>
+            <Button size="sm" onClick={() => submit()} disabled={busy} loading={busy}>
               {busy ? "检测中…" : "重新检测并解锁"}
-            </button>
+            </Button>
             {/* 逃生口：误判时（公司专线出口在境外）没有它就解不开库，连检测模式都改不了 */}
-            <span
+            <button
+              type="button"
               onClick={() => !busy && submit(true)}
+              disabled={busy}
               title="只是在本机读账号库；之后打开每个账号页仍会再检测"
-              style={{ fontSize: 12, color: blocked.mode === "warn" ? C.brand : C.muted, cursor: busy ? "default" : "pointer" }}
+              className="sb-link"
+              style={{ fontSize: 12, color: blocked.mode === "warn" ? C.brand : C.muted }}
             >
               {blocked.mode === "warn" ? "继续解锁" : "仍要解锁（不记住）"}
-            </span>
+            </button>
           </div>
         </div>
       )}
       <ErrorLine text={err} />
-      <button style={{ ...bigButton, opacity: blocked || busy ? 0.5 : 1, cursor: blocked || busy ? "not-allowed" : "pointer" }} onClick={() => submit()} disabled={!!blocked || busy}>
+      <Button size="lg" kind="primary" onClick={() => submit()} disabled={!!blocked || busy} loading={busy} style={{ width: "100%" }}>
         {busy ? "检测中…" : "登录"}
-      </button>
+      </Button>
     </Shell>
   );
 }
@@ -293,7 +284,7 @@ function ResetPanel({ hint }: { hint: { data_dir: string; command: string } }) {
   // Windows 上给的是 PowerShell 命令（见 lib.rs 的 reset_hint），cmd 里跑不了
   const shell = IS_MAC ? "终端" : " PowerShell ";
   return (
-    <div style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ width: "100%", background: C.surface, border: `1px solid ${C.border}`, borderRadius: "var(--sb-radius-lg)", padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ fontSize: 13, color: C.text }}>换个账号 / 忘了主密码</div>
       <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
         主密码找不回来，也没有办法重置——它本身就是解密账号库的钥匙。
@@ -307,7 +298,7 @@ function ResetPanel({ hint }: { hint: { data_dir: string; command: string } }) {
             flexGrow: 1,
             minWidth: 0,
             background: C.bg,
-            borderRadius: 7,
+            borderRadius: "var(--sb-radius-sm)",
             padding: "10px 12px",
             fontSize: 11,
             color: C.sub,

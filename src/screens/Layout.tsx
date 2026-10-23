@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Brand, C, HelpDot, IS_MAC } from "../ui";
+import { Brand, C, HelpDot, IS_MAC, IconButton } from "../ui";
+import { IconChevronDown, IconClose } from "../icons";
 import { DEMO_PASSWORD, type RegionState } from "../api";
 import { RegionBadge } from "./RegionGuard";
 
@@ -88,28 +89,41 @@ export function AppShell({ children, split, demo, tour, onStopTour, region, chec
         <div id={TOPBAR_SLOT_ID} style={{ flexGrow: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "center", visibility: tour ? "hidden" : "visible" }} />
         {/* 提醒演示的人自己：现在是假库。主密码写出来，复制明文、改设置时要输 */}
         {tour && (
-          <div data-tauri-drag-region="false" style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 10, padding: "4px 14px", borderRadius: 999, background: C.brandSoft, color: C.brand, fontSize: 13, whiteSpace: "nowrap" }}>
+          <div data-tauri-drag-region="false" style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 10, padding: "4px 14px", borderRadius: "var(--sb-radius-pill)", background: C.brandSoft, color: C.brand, fontSize: 13, whiteSpace: "nowrap" }}>
             {tour.running && "▶ "}
             {tour.text}
             {tour.running && (
-              <span onClick={onStopTour} title="停止自动演示；正在录的屏会丢掉" style={{ fontSize: 11, color: C.muted, cursor: "pointer", textDecoration: "underline" }}>
+              <button
+                type="button"
+                onClick={onStopTour}
+                title="停止自动演示；正在录的屏会丢掉"
+                className="sb-link"
+                style={{ fontSize: 11, color: C.muted, textDecoration: "underline" }}
+              >
                 停止
-              </span>
+              </button>
             )}
           </div>
         )}
         {/* 自动演示时字幕替掉它：视频里不需要这行给演示者看的提醒 */}
         {demo && !tour?.running && (
-          <span title="全是假数据，不碰真实账号库；锁定账号库即退出演示" style={{ padding: "2px 10px", borderRadius: 999, background: "rgba(255,125,0,0.12)", color: C.warn, fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>
+          <span title="全是假数据，不碰真实账号库；锁定账号库即退出演示" style={{ padding: "2px 10px", borderRadius: "var(--sb-radius-pill)", background: C.warnSoft, color: C.warn, fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>
             演示模式 · 主密码 {DEMO_PASSWORD}
           </span>
         )}
         <RegionBadge state={region} busy={checking} onClick={onCheck} />
         {!split && <Brand size={15} />}
         {notice && (
-          <div data-tauri-drag-region="false" style={{ position: "absolute", top: TOPBAR_H + 2, right: 20, zIndex: 35, maxWidth: 330, padding: "12px 14px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 4px 18px rgba(0,0,0,0.12)", fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
+          <div data-tauri-drag-region="false" style={{ position: "absolute", top: TOPBAR_H + 2, right: 20, zIndex: 35, maxWidth: 330, padding: "12px 14px", borderRadius: "var(--sb-radius-md)", background: C.surface, border: `1px solid ${C.border}`, boxShadow: "var(--sb-shadow-md)", fontSize: 12, color: C.sub, lineHeight: 1.7 }}>
             {notice}
-            <span onClick={onDismiss} style={{ marginLeft: 10, color: C.brand, cursor: "pointer" }}>关闭</span>
+            <IconButton
+              label="关闭提示"
+              size="xs"
+              onClick={onDismiss}
+              style={{ display: "inline-flex", verticalAlign: -4, marginLeft: 6 }}
+            >
+              <IconClose size={12} />
+            </IconButton>
           </div>
         )}
       </div>
@@ -137,17 +151,19 @@ export function NavItem({
   onClick: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.background = "rgba(0,0,0,0.035)";
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.background = "transparent";
-      }}
+      aria-current={active ? "page" : undefined}
+      className="sb-pressable"
       style={{
+        width: "100%",
+        boxSizing: "border-box",
+        border: 0,
+        font: "inherit",
+        textAlign: "left",
         padding: compact ? "6px 10px" : "9px 10px",
-        borderRadius: 7,
+        borderRadius: "var(--sb-radius-sm)",
         // 侧栏是白底，选中的用浅灰底标出来
         background: active ? C.bg : "transparent",
         fontSize: muted ? 12 : 13,
@@ -164,7 +180,7 @@ export function NavItem({
     >
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", filter: blurLabel ? "blur(7px)" : "none", userSelect: blurLabel ? "none" : "auto" }}>{label}</span>
       {count ? <span style={{ color: C.muted, flexShrink: 0, fontSize: 12 }}>{count}</span> : null}
-    </div>
+    </button>
   );
 }
 
@@ -247,6 +263,7 @@ export function FilterGroup({
         onClick={toggle}
         style={{
           width: "100%",
+          boxSizing: "border-box",
           border: 0,
           background: "transparent",
           textAlign: "left",
@@ -260,8 +277,8 @@ export function FilterGroup({
           userSelect: "none",
         }}
       >
-        <span style={{ display: "inline-block", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 120ms ease", fontSize: 9 }}>
-          ▾
+        <span style={{ display: "inline-flex", transform: collapsed ? "rotate(-90deg)" : "none", transition: "transform 120ms ease" }}>
+          <IconChevronDown size={12} />
         </span>
         {title}
         <span style={{ marginLeft: "auto" }}>{items.length}</span>

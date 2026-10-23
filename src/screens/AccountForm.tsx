@@ -68,7 +68,7 @@ export default function AccountForm({ initial, isNew, copiedFrom, accounts, onSa
         </div>
         <div style={{ fontSize: 13, color: C.sub, marginTop: -12 }}>每条记录会自动获得独立的 cookie 存储，多个账号同时在线互不冲突</div>
         {copiedFrom && (
-          <div style={{ fontSize: 12, color: C.sub, padding: "10px 12px", borderRadius: 7, background: C.brandSoft }}>
+          <div style={{ fontSize: 12, color: C.sub, padding: "10px 12px", borderRadius: "var(--sb-radius-sm)", background: C.brandSoft }}>
             已从“{copiedFrom}”预填全部字段（包括密码、TOTP 密钥和附加字段）。请核对并修改后保存，新账号会使用独立的登录会话。
           </div>
         )}

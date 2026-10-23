@@ -1,26 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api";
 import type { Account, SessionInfo } from "../api";
-import { Button, C, ErrorLine, MOD, inputStyle } from "../ui";
-
-function Backdrop({ children, onClose, align = "center" }: { children: React.ReactNode; onClose: () => void; align?: "center" | "top" }) {
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.35)",
-        display: "flex",
-        alignItems: align === "top" ? "flex-start" : "center",
-        justifyContent: "center",
-        paddingTop: align === "top" ? 120 : 0,
-      }}
-    >
-      <div onClick={(e) => e.stopPropagation()}>{children}</div>
-    </div>
-  );
-}
+import { Button, C, Dialog, ErrorLine, MOD, Pressable, R, inputStyle } from "../ui";
 
 /** QuickSwitch.dc.html —— Cmd+K 面板 */
 export function QuickSwitch({
@@ -69,55 +50,56 @@ export function QuickSwitch({
   const firstOffline = list.findIndex((a) => !online.has(a.id));
 
   return (
-    <Backdrop onClose={onClose} align="top">
-      <div style={{ width: 520, background: C.surface, borderRadius: 12, overflow: "hidden", boxShadow: "0 8px 30px rgba(0,0,0,0.18)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: `1px solid ${C.border}` }}>
-          <span style={{ fontSize: 11, color: C.muted, border: `1px solid ${C.border}`, borderRadius: 5, padding: "2px 6px" }}>{MOD}K</span>
-          <input
-            autoFocus
-            placeholder="输入平台名 / 应用名快速跳转"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ flexGrow: 1, border: "none", outline: "none", fontSize: 14, color: C.text }}
-          />
-        </div>
-        <div style={{ maxHeight: 340, overflowY: "auto", padding: 8 }}>
-          {list.length === 0 && <div style={{ padding: 16, fontSize: 13, color: C.muted }}>没有匹配的账号</div>}
-          {list.map((a, i) => (
-            <div key={a.id}>
-              {i === 0 && online.has(a.id) && <Group text="当前已在线 · 直接切换" />}
-              {i === firstOffline && <Group text="还没打开 · 切换即拉起页面" />}
-              <div
-                onMouseEnter={() => setCursor(i)}
-                onClick={() => onPick(a)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "10px 10px",
-                  borderRadius: 8,
-                  background: i === cursor ? C.brandSoft : "transparent",
-                  cursor: "pointer",
-                }}
-              >
-                <div style={{ width: 8, height: 8, borderRadius: 999, background: online.has(a.id) ? C.success : C.border, flexShrink: 0 }} />
+    <Dialog label="快捷切换账号" width={520} align="top" onClose={onClose} style={{ overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: 11, color: C.muted, border: `1px solid ${C.border}`, borderRadius: R.xs, padding: "2px 6px" }}>{MOD}K</span>
+        <input
+          autoFocus
+          placeholder="输入平台名 / 应用名快速跳转"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          aria-label="搜索账号"
+          style={{ flexGrow: 1, minWidth: 0, border: "none", background: "transparent", fontSize: 14, color: C.text }}
+        />
+      </div>
+      <div style={{ maxHeight: 340, overflowY: "auto", padding: 8 }}>
+        {list.length === 0 && <div style={{ padding: 16, fontSize: 13, color: C.muted }}>没有匹配的账号</div>}
+        {list.map((a, i) => (
+          <div key={a.id}>
+            {i === 0 && online.has(a.id) && <Group text="当前已在线 · 直接切换" />}
+            {i === firstOffline && <Group text="还没打开 · 切换即拉起页面" />}
+            <Pressable
+              onClick={() => onPick(a)}
+              onMouseEnter={() => setCursor(i)}
+              label={`${online.has(a.id) ? "切换" : "打开"} ${a.platform} ${a.related_app || a.username}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 10px",
+                borderRadius: R.md,
+                background: i === cursor ? C.brandSoft : "transparent",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexGrow: 1, minWidth: 0 }}>
+                <div aria-hidden="true" style={{ width: 8, height: 8, borderRadius: "var(--sb-radius-pill)", background: online.has(a.id) ? C.success : C.border, flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: C.text }}>{a.platform}</span>
-                <span style={{ fontSize: 13, color: C.sub, flexGrow: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 13, color: C.sub, flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {a.related_app || a.username}
                   <span style={{ color: C.muted, fontSize: 12 }}> · {a.owner_type}</span>
                 </span>
                 <span style={{ fontSize: 11, color: C.muted }}>{online.has(a.id) ? "Enter 切换" : "Enter 打开"}</span>
               </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 14, padding: "10px 16px", borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
-          <span>↑↓ 选择</span>
-          <span>Enter 切换</span>
-          <span>Esc 取消</span>
-        </div>
+            </Pressable>
+          </div>
+        ))}
       </div>
-    </Backdrop>
+      <div style={{ display: "flex", gap: 14, padding: "10px 16px", borderTop: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>
+        <span>↑↓ 选择</span>
+        <span>Enter 切换</span>
+        <span>Esc 取消</span>
+      </div>
+    </Dialog>
   );
 }
 
@@ -149,10 +131,10 @@ export function CopyGate({ label, onCancel, onPassed }: { label: string; onCance
   }
 
   return (
-    <Backdrop onClose={onCancel}>
-      <div style={{ width: 380, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}>
+    <Dialog label={`复制${label}前验证主密码`} width={380} onClose={onCancel}>
+      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
-          <div style={{ fontSize: 17, color: C.text }}>复制{label}</div>
+          <div style={{ fontSize: 17, color: C.text, fontWeight: 500 }}>复制{label}</div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 6, lineHeight: 1.7 }}>
             剪贴板是全机共享的，放进去的明文任何程序都读得到。验一次主密码后 5 分钟内的复制不再询问；
             复制的内容 30 秒后自动从剪贴板清掉。
@@ -169,13 +151,13 @@ export function CopyGate({ label, onCancel, onPassed }: { label: string; onCance
         />
         <ErrorLine text={err} />
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <Button onClick={onCancel}>取消</Button>
-          <Button kind="primary" onClick={() => void submit()} disabled={!pwd || busy}>
+          <Button size="md" onClick={onCancel}>取消</Button>
+          <Button size="md" kind="primary" onClick={() => void submit()} disabled={!pwd || busy} loading={busy}>
             {busy ? "校验中…" : "验证并复制"}
           </Button>
         </div>
       </div>
-    </Backdrop>
+    </Dialog>
   );
 }
 
@@ -218,8 +200,8 @@ export function TotpCode({
   }, [account.id]);
 
   return (
-    <Backdrop onClose={onClose}>
-      <div style={{ width: 380, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 18, alignItems: "center" }}>
+    <Dialog label={`${account.platform} 本地验证码`} width={380} onClose={onClose}>
+      <div style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18, alignItems: "center" }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 15, color: C.text }}>
             {account.platform} · {account.related_app || account.username}
@@ -228,21 +210,33 @@ export function TotpCode({
         </div>
 
         {err ? (
-          <div style={{ fontSize: 13, color: C.danger, textAlign: "center" }}>{err}</div>
+          <div role="alert" style={{ fontSize: 13, color: C.danger, textAlign: "center" }}>{err}</div>
         ) : (
           <>
-            <span
+            <button
+              type="button"
               onClick={copy}
               title="点击复制"
-              style={{ fontSize: 40, letterSpacing: 6, color: C.text, fontFamily: "ui-monospace, monospace", cursor: "pointer" }}
+              aria-label="复制验证码"
+              style={{
+                padding: "2px 4px",
+                border: 0,
+                background: "transparent",
+                fontSize: 40,
+                letterSpacing: 6,
+                color: C.text,
+                fontFamily: "ui-monospace, monospace",
+                cursor: "pointer",
+                borderRadius: R.md,
+              }}
             >
               {state ? `${state.code.slice(0, 3)} ${state.code.slice(3)}` : "— — —"}
-            </span>
+            </button>
             <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-              <div style={{ width: "100%", height: 4, borderRadius: 999, background: C.bg, overflow: "hidden" }}>
+              <div style={{ width: "100%", height: 4, borderRadius: "var(--sb-radius-pill)", background: C.bg, overflow: "hidden" }}>
                 <div style={{ width: `${((state?.remaining ?? 0) / 30) * 100}%`, height: "100%", background: C.brand, transition: "width 1s linear" }} />
               </div>
-              <div style={{ fontSize: 12, color: copied ? (copied.startsWith("已复制") ? C.success : C.danger) : C.muted }}>
+              <div role="status" style={{ fontSize: 12, color: copied ? (copied.startsWith("已复制") ? C.success : C.danger) : C.muted }}>
                 {copied || (state ? `${state.remaining} 秒后刷新` : "生成中…")}
               </div>
             </div>
@@ -251,14 +245,13 @@ export function TotpCode({
 
         <div style={{ display: "flex", gap: 10 }}>
           {!err && (
-            <Button kind="primary" onClick={copy} disabled={!state}>
+            <Button size="md" kind="primary" onClick={copy} disabled={!state}>
               复制
             </Button>
           )}
-          <Button onClick={onClose}>返回</Button>
+          <Button size="md" onClick={onClose}>返回</Button>
         </div>
       </div>
-    </Backdrop>
+    </Dialog>
   );
 }
-

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import * as api from "../api";
 import type { Account, PlatformConfig } from "../api";
-import { Button, C, ErrorLine, inputStyle } from "../ui";
+import { Button, C, Dialog, ErrorLine, inputStyle } from "../ui";
 import { NavItem, SideGroup, SubPage, type SubPageShell } from "./Layout";
 
 const COLS = "1.1fr 1.4fr 1.4fr 0.9fr 0.8fr 0.6fr";
@@ -87,7 +87,7 @@ export default function PlatformConfigScreen({
         </div>
       </div>
 
-      <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: "var(--sb-radius-lg)", overflow: "hidden" }}>
         <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 12, padding: "12px 16px", background: C.bg, fontSize: 12, color: C.muted }}>
           <div>平台</div>
           <div>账号输入框选择器</div>
@@ -114,7 +114,7 @@ export default function PlatformConfigScreen({
               <div style={cell}>{c.trigger_event || "—"}</div>
               <div style={{ fontSize: 12, color: s.color }}>{s.text}</div>
               <div style={{ textAlign: "right" }}>
-                <Button onClick={() => { setErr(""); setEditing(c); }} style={{ padding: "5px 10px", fontSize: 12 }}>
+                <Button size="sm" onClick={() => { setErr(""); setEditing(c); }}>
                   编辑
                 </Button>
               </div>
@@ -133,22 +133,16 @@ export default function PlatformConfigScreen({
       {!editing && <ErrorLine text={err} />}
 
       {editing && (
-        <div
-          onClick={() => setEditing(null)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 460, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 14 }}
-          >
+        <Dialog label={`编辑 ${editing.platform} 的适配配置`} width={480} onClose={() => setEditing(null)} style={{ padding: 28 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ fontSize: 18, color: C.text }}>{editing.platform}</div>
 
             {/* 手填选择器只是兜底。能点得到页面的话，指认一次比自己写 CSS 选择器靠谱得多 */}
             {(() => {
               const has = api.accountsForConfig(accounts, editing.platform).length > 0;
               return (
-                <div style={{ background: C.bg, borderRadius: 8, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-                  <Button kind="primary" disabled={!has} onClick={() => onPick(editing.platform)} style={{ padding: "8px 14px", fontSize: 13 }}>
+                <div style={{ background: C.bg, borderRadius: "var(--sb-radius-md)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <Button size="sm" kind="primary" disabled={!has} onClick={() => onPick(editing.platform)}>
                     在登录页上指认输入框
                   </Button>
                   <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7 }}>
@@ -184,16 +178,16 @@ export default function PlatformConfigScreen({
             {editing.updated_at && <div style={{ fontSize: 12, color: C.muted }}>上次更新：{editing.updated_at}</div>}
             <ErrorLine text={err} />
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <Button kind="danger" onClick={remove} style={{ marginRight: "auto" }}>
+              <Button size="md" kind="danger" onClick={remove} style={{ marginRight: "auto" }}>
                 删除这条配置
               </Button>
-              <Button onClick={() => setEditing(null)}>取消</Button>
-              <Button kind="primary" onClick={save}>
+              <Button size="md" onClick={() => setEditing(null)}>取消</Button>
+              <Button size="md" kind="primary" onClick={save}>
                 保存
               </Button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
     </SubPage>

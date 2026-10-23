@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as api from "../api";
-import { Button, C, ErrorLine, copyText, inputStyle } from "../ui";
+import { Button, C, Dialog, ErrorLine, copyText, inputStyle } from "../ui";
 
 /** 在登录页控制台跑这段，把所有输入框的结构打出来，喂给 AI */
 const PROBE_SNIPPET = `copy(JSON.stringify([...document.querySelectorAll('input,textarea')].map(e=>({
@@ -39,11 +39,11 @@ function CopyBlock({ label, text, note }: { label: string; text: string; note?: 
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{label}</span>
         <Button
+          size="sm"
           onClick={async () => {
             setCopied(await copyText(text));
             setTimeout(() => setCopied(null), 1600);
           }}
-          style={{ padding: "4px 10px", fontSize: 12 }}
         >
           {copied === true ? "已复制" : copied === false ? "复制失败" : "复制"}
         </Button>
@@ -53,7 +53,7 @@ function CopyBlock({ label, text, note }: { label: string; text: string; note?: 
         style={{
           margin: 0,
           background: C.bg,
-          borderRadius: 8,
+          borderRadius: "var(--sb-radius-md)",
           padding: "12px 14px",
           fontSize: 11,
           lineHeight: 1.6,
@@ -111,7 +111,7 @@ export default function AdaptHelp({ onClose, onImported }: { onClose: () => void
         style={{
           width: 22,
           height: 22,
-          borderRadius: 999,
+          borderRadius: "var(--sb-radius-pill)",
           background: C.brandSoft,
           color: C.brand,
           fontSize: 12,
@@ -132,14 +132,8 @@ export default function AdaptHelp({ onClose, onImported }: { onClose: () => void
   );
 
   return (
-    <div
-      onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "48px 0", overflowY: "auto" }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: 680, background: C.surface, borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 22 }}
-      >
+    <Dialog label="新平台怎么适配" width={680} align="top" onClose={onClose} style={{ padding: 28 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
         <div>
           <div style={{ fontSize: 18, color: C.text }}>新平台怎么适配（不用重新打包）</div>
           <div style={{ fontSize: 13, color: C.sub, marginTop: 6, lineHeight: 1.7 }}>
@@ -195,9 +189,9 @@ export default function AdaptHelp({ onClose, onImported }: { onClose: () => void
         {msg && <div style={{ fontSize: 13, color: C.brand }}>{msg}</div>}
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Button onClick={onClose}>关闭</Button>
+          <Button size="md" onClick={onClose}>关闭</Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
